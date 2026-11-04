@@ -1,0 +1,26 @@
+# 公开快照白名单（逐行 glob，相对仓库根；未列出的不发布）
+.github/workflows/*.yml
+.github/codeql/codeql-config.yml
+.github/publish-allowlist.txt
+.githooks/commit-msg
+.gitignore
+.gitleaks.toml
+.semgrep.yml
+.dev.vars.example
+AGENTS.md
+LICENSE
+README.md
+SECURITY.md
+package.json
+package-lock.json
+wrangler.toml
+docs/*.md
+docs/specs/*.md
+public/index.html
+public/admin.html
+public/style.css
+src/*.js
+scripts/*.mjs
+scripts/*.sh
+tests/*.mjs
+.github/pull_request_template.md

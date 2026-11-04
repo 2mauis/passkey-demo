@@ -1,0 +1,36 @@
+# 本仓库自定义 SAST 规则（semgrep / opengrep 兼容）
+rules:
+  - id: pk-no-innerhtml
+    languages: [javascript]
+    severity: ERROR
+    message: 不要用 innerHTML/outerHTML/insertAdjacentHTML 写入数据，用 textContent / DOM API
+    patterns:
+      - pattern-either:
+          - pattern: $X.innerHTML = $V
+          - pattern: $X.outerHTML = $V
+          - pattern: $X.insertAdjacentHTML(...)
+  - id: pk-no-eval
+    languages: [javascript]
+    severity: ERROR
+    message: 禁止 eval / new Function
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: pk-no-math-random-for-secrets
+    languages: [javascript]
+    severity: ERROR
+    message: 安全相关随机数必须用 crypto.getRandomValues / randomBytes
+    paths:
+      include: [src/]
+    pattern: Math.random()
+  - id: pk-session-cookie-flags
+    languages: [javascript]
+    severity: ERROR
+    message: Set-Cookie 必须带 HttpOnly; Secure; SameSite
+    paths:
+      include: [src/worker.js]
+    patterns:
+      - pattern: "`$...X`"
+      - metavariable-regex:
+          metavariable: $...X
+          regex: (?s)^(?=.*Path=/)(?!.*HttpOnly).*

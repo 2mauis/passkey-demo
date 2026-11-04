@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>邀请管理 · Passkey 登录演示</title>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/admin.js"></script>
+</head>
+<body>
+<main>
+  <h1>✉️ 邀请管理</h1>
+  <p class="muted">当前登录：<strong id="adm-name">…</strong> · 角色：<span id="adm-role" class="badge">…</span> · <a href="/">返回首页</a></p>
+  <p class="hint" id="adm-perms"></p>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section class="card">
+    <h2>生成邀请</h2>
+    <p class="muted">邀请一次性有效：注册成功后立即作废；可以设置有效期，也可以只允许某个用户名使用。服务器只保存邀请码的 SHA-256 哈希。</p>
+    <form id="inv-form" autocomplete="off">
+      <div class="row">
+        <label class="field">有效期
+          <select id="inv-ttl">
+            <option value="3600">1 小时</option>
+            <option value="86400">24 小时</option>
+            <option value="259200" selected>3 天</option>
+            <option value="604800">7 天</option>
+            <option value="2592000">30 天</option>
+          </select>
+        </label>
+        <label class="field">岗位模板（可选）
+          <select id="inv-tpl"><option value="">不套用</option></select>
+        </label>
+        <label class="field grow">绑定用户名（可选）
+          <input id="inv-user" placeholder="留空 = 不限用户名" minlength="3" maxlength="32" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row"><button type="submit" id="btn-create">生成邀请</button></div>
+    </form>
+
+    <div id="inv-result" class="secret" hidden>
+      <p class="warn">⚠️ 邀请码和链接<strong>只显示这一次</strong>，关闭或刷新页面后无法再次查看。请通过私密渠道发给受邀人。</p>
+      <p class="muted">编号 <code id="res-id"></code> · 绑定用户名 <span id="res-user"></span> · 过期时间 <span id="res-exp"></span></p>
+      <label class="field">邀请链接
+        <div class="row"><input id="res-link" readonly spellcheck="false"><button type="button" id="copy-link">复制链接</button></div>
+      </label>
+      <label class="field">邀请码
+        <div class="row"><input id="res-code" readonly spellcheck="false"><button type="button" id="copy-code">复制邀请码</button></div>
+      </label>
+      <div class="row"><button type="button" id="btn-done" class="secondary">我已复制，隐藏</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>待使用的邀请 <span class="muted" id="inv-count"></span></h2>
+    <p class="hint">只列出未使用、未撤销、未过期的邀请（已使用 / 已撤销的邀请会立即从存储中删除，过期的由 KV 自动删除）。列表不包含邀请码。</p>
+    <table>
+      <thead><tr><th>编号</th><th>绑定用户名</th><th>状态</th><th>创建时间</th><th>过期时间</th><th>签发者</th><th>操作</th></tr></thead>
+      <tbody id="inv-list"></tbody>
+    </table>
+    <div class="row"><button type="button" id="btn-refresh" class="secondary">刷新列表</button></div>
+  </section>
+
+  <section class="card" id="members" hidden>
+    <h2>成员角色</h2>
+    <p class="hint">负责人在 Worker 配置（PRINCIPALS）里设置，页面上不能修改；成员主管和邀请人在这里分配。只能给已注册的用户分配角色，不能修改自己的角色。</p>
+    <table>
+      <thead><tr><th>用户名</th><th>级别 / 角色</th><th>来源</th><th>授予者</th><th>授予时间</th><th>过期（台北时间 UTC+8）</th><th>发邀请权限</th><th>操作</th></tr></thead>
+      <tbody id="mem-list"></tbody>
+    </table>
+    <form id="mem-form" class="row" autocomplete="off">
+      <input id="mem-user" placeholder="已注册的用户名" minlength="3" maxlength="32" spellcheck="false">
+      <select id="mem-role"></select>
+      
+      <button type="submit" id="btn-grant">授予角色</button>
+    </form>
+    <p class="hint">选了模板时以模板的基础角色为准，并按模板设置默认过期（复制快照，之后修改模板不影响已套用的账户）。</p>
+  </section>
+
+  <section class="card" id="expiry" hidden>
+    <h2>过期时间</h2>
+    <p class="hint">给临时账户或临时角色设过期：到期后不能登录（passkey 登录也被拒绝），已有会话的管理权限在下一次请求时立即失效。时间按台北时间（UTC+8）输入和显示，服务器按 UTC 时间戳存储。负责人永不过期，服务端拒绝修改。只能修改级别低于自己的账户。</p>
+    <form id="exp-form" class="row" autocomplete="off">
+      <input id="exp-user" placeholder="用户名" minlength="3" maxlength="32" spellcheck="false">
+      <select id="exp-scope"><option value="account">账户</option><option value="role">角色</option></select>
+      <select id="exp-mode">
+        <option value="relative">相对时长</option>
+        <option value="absolute">具体时间（台北）</option>
+        <option value="never">永不过期</option>
+        <option value="none">取消设置（含取消永不过期）</option>
+        <option value="clear">清除该范围的过期</option>
+      </select>
+      <input id="exp-dur" placeholder="如 1d、12h、30m、2w" maxlength="8">
+      <input id="exp-at" type="datetime-local">
+      <button type="submit" id="btn-exp">保存过期设置</button>
+    </form>
+  </section>
+
+  <section class="card" id="templates" hidden>
+    <h2>岗位模板</h2>
+    <p class="hint">模板只在三级角色的基础上叠加默认配置，不创造新权限，也不能给出负责人（root）。只有负责人可以新增、修改、删除模板。</p>
+    <table>
+      <thead><tr><th>编号</th><th>名称</th><th>基础角色</th><th>默认过期</th><th>说明</th><th>版本</th><th>操作</th></tr></thead>
+      <tbody id="tpl-list"></tbody>
+    </table>
+    <form id="tpl-form" class="row" autocomplete="off" hidden>
+      <input id="tpl-id" placeholder="编号，如 guest" maxlength="32" spellcheck="false">
+      <input id="tpl-name" placeholder="名称，如 访客" maxlength="32">
+      <input type="hidden" id="tpl-role" value=""><span class="hint">模板只设定默认有效期，不授予角色（带角色模板已禁用）</span>
+      <select id="tpl-exp"></select>
+      <select id="tpl-scope"><option value="account">过期作用于账户</option><option value="role">过期作用于角色</option></select>
+      <input id="tpl-desc" placeholder="说明" maxlength="200">
+      <button type="submit" id="btn-tpl">保存模板</button>
+    </form>
+  </section>
+
+  <section class="card" id="audit" hidden>
+    <h2>审计日志（最近 200 条）</h2>
+    <p class="hint">不记录邀请码、恢复码、token 或会话等秘密本身。</p>
+    <table><thead><tr><th>时间（台北 UTC+8）</th><th>事件</th><th>操作者</th><th>对象</th><th>详情</th></tr></thead><tbody id="audit-list"></tbody></table>
+    <div class="row"><button type="button" id="btn-audit" class="secondary">刷新审计日志</button></div>
+  </section>
+</main>
+</body>
+</html>

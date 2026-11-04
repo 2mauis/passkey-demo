@@ -1,0 +1,42 @@
+# 公开快照：仅手动触发；在 staging 仓运行，把白名单快照推到 public 仓。
+# 需要 secret PUBLIC_REPO_DEPLOY_KEY（只写这个名字；当前未配置，缺失时预检退出 0）。
+name: publish
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publish-snapshot:
+    name: publish-snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: 预检
+        id: pre
+        env:
+          KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then echo "未配置 PUBLIC_REPO_DEPLOY_KEY，跳过"; echo "go=0" >> "$GITHUB_OUTPUT"; else echo "go=1" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.pre.outputs.go == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - if: steps.pre.outputs.go == '1'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22" }
+      - if: steps.pre.outputs.go == '1'
+        name: 安装 gitleaks
+        run: |
+          V=8.30.1
+          curl -sSfL -o /tmp/gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz"
+          curl -sSfL -o /tmp/gl.txt "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_checksums.txt"
+          (cd /tmp && grep " gitleaks_${V}_linux_x64.tar.gz$" gl.txt | sed "s/gitleaks_${V}_linux_x64.tar.gz/gl.tgz/" | sha256sum -c -)
+          sudo tar -xzf /tmp/gl.tgz -C /usr/local/bin gitleaks
+      - if: steps.pre.outputs.go == '1'
+        name: 推送快照
+        env:
+          KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_publish && chmod 600 ~/.ssh/id_publish
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_publish -o IdentitiesOnly=yes" sh scripts/publish-snapshot.sh git@github.com:2mauis/passkey-demo.git main

@@ -1,0 +1,56 @@
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit:
+    name: unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22", cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: for f in src/*.js scripts/*.mjs tests/*.mjs; do node --check "$f"; done
+      - run: node tests/risk.mjs && node tests/state-unit.mjs
+      - run: node tests/workflow-scripts.mjs
+      - name: wrangler deploy --dry-run（只打包，不上传，不需要凭证）
+        run: npx wrangler deploy --dry-run --outdir /tmp/dry
+  local-e2e:
+    name: local-e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [session, expiry-roles, admin-ui, e2e]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22", cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: sh scripts/ci-dev-vars.sh
+      - name: run suite（本地 wrangler dev / miniflare，不连 Cloudflare 账号）
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          if [ "$SUITE" = e2e ]; then
+            npx wrangler dev --port 8787 --persist-to /tmp/pk-e2e > /tmp/dev.log 2>&1 &
+            for i in $(seq 1 120); do grep -q "Ready on" /tmp/dev.log && break; sleep 1; done
+            BASE_URL=http://localhost:8787 node tests/e2e.mjs
+          else
+            node "tests/$SUITE.mjs"
+          fi

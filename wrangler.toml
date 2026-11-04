@@ -1,0 +1,69 @@
+name = "passkey-demo"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+# 不配置 routes / custom domains：仅部署到 workers.dev
+
+[build]
+command = "npm run build"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+RP_ID = "passkey-demo.example.workers.dev"
+ORIGIN = "https://passkey-demo.example.workers.dev"
+RP_NAME = "Passkey 登录演示"
+TURNSTILE_SITEKEY = "1x00000000000000000000AA"
+# 负责人（principal，最高角色）名单，逗号分隔、大小写敏感。只能在这里配置，页面上不能授予或移除；其余角色（成员主管、邀请人）由负责人在 /admin 页面分配，存 KV。
+# 每次请求按会话里的用户名实时判断；留空 = 没有负责人。修改后需重新部署（npx wrangler deploy）。
+PRINCIPALS = "root_example"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "00000000000000000000000000000000"
+
+# 强一致状态（Durable Object，SQLite 存储）：一次性 challenge / 恢复码 / OTP 的原子消费、服务端会话表、登录环境历史。
+# 注意：这是新增绑定 + 迁移，上线前需 Jack 批准（见 docs/session.md「部署步骤」）；本地 wrangler dev 会自动模拟。
+[[durable_objects.bindings]]
+name = "STATE"
+class_name = "AuthState"
+
+[[migrations]]
+tag = "v1-authstate"
+new_sqlite_classes = ["AuthState"]
+
+# 应急管理入口：secret ADMIN_TOKEN（Bearer，命令行 scripts/invite.mjs 使用；明文只在本地 .admin-token 文件中，chmod 600，已 gitignore）。
+# 删除该 secret（wrangler secret delete ADMIN_TOKEN）即可关闭应急入口（fail closed）。
+# Turnstile sitekey 是公开值（secret 通过 `wrangler secret put TURNSTILE_SECRET` 设置，不写入任何文件）
+# TURNSTILE_SITEKEY 在 [vars] 中设置
+
+# 限流（Workers Rate Limiting binding）：每个接口按 IP 每 60 秒最多 10 次
+[[ratelimits]]
+name = "RL_OPTIONS"
+namespace_id = "26102601"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "RL_VERIFY"
+namespace_id = "26102602"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# 管理页面 /admin 与管理接口（邀请码的创建 / 列出 / 撤销）：在任何鉴权与 KV 读取之前按 IP 限流，每个路径每 60 秒最多 10 次
+[[ratelimits]]
+name = "RL_ADMIN"
+namespace_id = "26102603"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# 防止“账单攻击”：每次调用最多 50 ms CPU（仅 Standard 用量模型、仅线上生效）
+[limits]
+cpu_ms = 50

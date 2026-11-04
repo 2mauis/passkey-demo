@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passkey 登录演示</title>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<main>
+  <h1>🔑 Passkey（WebAuthn）登录演示</h1>
+  <p class="notice">⚠️ 这只是一个技术演示页面。<strong>请勿输入任何真实个人信息</strong>（姓名、邮箱、手机号等），用户名请使用类似 <code>demo_abc123</code> 的演示名称。演示数据可能随时被清除。</p>
+
+  <p id="support" class="muted"></p>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section id="anon" class="card" hidden>
+    <h2>注册</h2>
+    <p class="muted">本站<strong>仅限受邀注册</strong>：填写管理员发给你的邀请码（打开邀请链接会自动填入），输入一个新的演示用户名，然后用设备上的指纹 / 面容 / PIN 创建 passkey。</p>
+    <form id="reg-form" autocomplete="off">
+      <div class="row">
+        <input id="reg-invite" name="reg-invite" placeholder="邀请码（43 位，由管理员提供）" minlength="43" maxlength="43" required autocomplete="off" spellcheck="false">
+      </div>
+      <div class="row">
+        <input id="reg-username" name="reg-username" placeholder="演示用户名，如 demo_abc123" minlength="3" maxlength="32" required autocomplete="off">
+        <button type="submit" id="btn-register" disabled>注册并创建 passkey</button>
+      </div>
+    </form>
+    <div id="ts-widget" class="ts"></div>
+    <p class="hint">邀请码一次性有效、有过期时间，注册成功后立即作废；有的邀请只能用于指定的用户名。无效、过期、已撤销或已使用的邀请码提示都相同。用户名 3–32 位，仅限字母、数字、下划线、连字符。注册前需通过 Cloudflare Turnstile 人机验证。已被注册的用户名无法再次注册（为避免泄露用户名是否存在，失败提示是统一的）；如要给已有账号添加 passkey，请先登录。</p>
+
+    <h2>登录</h2>
+    <div class="row">
+      <button id="btn-login" type="button">使用 passkey 登录（无需用户名）</button>
+    </div>
+    <label class="muted" for="login-autofill">或者点击下方输入框，从浏览器自动填充中选择 passkey：</label>
+    <form id="cond-form" class="row">
+      <input id="login-autofill" name="username" autocomplete="username webauthn" placeholder="点击这里选择 passkey（自动填充）">
+    </form>
+  </section>
+
+  <section id="authed" class="card" hidden>
+    <h2>已登录</h2>
+    <p>当前用户：<strong id="me-name"></strong></p>
+    <p id="admin-link" hidden>🛡️ 你的角色：<strong id="admin-role"></strong> · <a href="/admin">邀请管理（签发 / 列表 / 撤销）</a></p>
+    <h3>已绑定的 passkey（<span id="me-count">0</span> / <span id="me-max">5</span>）</h3>
+    <table>
+      <thead><tr><th>凭据 ID（末 8 位）</th><th>创建时间</th><th>最近使用</th><th>传输方式</th><th>签名计数</th><th>类型 / 备份</th></tr></thead>
+      <tbody id="me-creds"></tbody>
+    </table>
+    <div class="row">
+      <button id="btn-add" type="button">为当前账号再添加一个 passkey</button>
+      <button id="btn-logout" type="button" class="secondary">退出登录</button>
+    </div>
+  </section>
+
+  <details id="debug">
+    <summary>调试面板（每一步的 options 与 response 要点）</summary>
+    <p class="hint">仅展示公开的协议字段（最近 8 条）；不会显示会话 ID 或 Cookie 值。</p>
+    <div id="debug-log"></div>
+  </details>
+
+  <footer class="muted">服务端：Cloudflare Workers + KV + Rate Limiting，使用 @simplewebauthn/server 验证；challenge 存于 HMAC 签名 cookie；注册需邀请码（一次性、可过期、可撤销）并使用 Cloudflare Turnstile；浏览器端：@simplewebauthn/browser（已打包）。</footer>
+</main>
+</body>
+</html>

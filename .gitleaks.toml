@@ -1,0 +1,12 @@
+# gitleaks 配置：默认规则 + 本仓库允许的公开测试值
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Cloudflare 公开文档中的 Turnstile 测试密钥与占位符"
+regexes = [
+  '''1x0000000000000000000000000000000AA''',
+  '''1x00000000000000000000AA''',
+  '''<PLACEHOLDER>''',
+]
+paths = ['''package-lock\.json''']

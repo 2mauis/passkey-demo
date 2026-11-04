@@ -1,0 +1,10 @@
+node_modules/
+public/app.js
+.wrangler/
+.dev.vars
+test-results/
+.admin-token
+.admin-token.*
+public/admin.js
+shots/
+.private/

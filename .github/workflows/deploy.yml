@@ -1,0 +1,41 @@
+# 部署到 Cloudflare Workers：仅手动触发；当前未启用 CD。
+# 缺少 CLOUDFLARE_API_TOKEN 时预检输出 skip 并退出 0，后续步骤全部跳过。
+# 权限要求与启用步骤见 docs/workflow.md「部署权限」「之后的 CD 步骤」。
+name: deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: deploy
+    steps:
+      - name: 预检（缺 token 即跳过）
+        id: pre
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then echo "未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID：跳过部署"; echo "go=0" >> "$GITHUB_OUTPUT"; else echo "go=1" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.pre.outputs.go == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - if: steps.pre.outputs.go == '1'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22", cache: npm }
+      - if: steps.pre.outputs.go == '1'
+        name: 拒绝部署占位配置
+        run: |
+          if grep -q 'example.workers.dev\|00000000000000000000000000000000' wrangler.toml; then echo "wrangler.toml 仍是公开占位配置，拒绝部署（见 docs/workflow.md 第 4 步）" >&2; exit 1; fi
+      - if: steps.pre.outputs.go == '1'
+        run: npm ci
+      - if: steps.pre.outputs.go == '1'
+        run: npx wrangler deploy --dry-run --outdir /tmp/dry
+      - if: steps.pre.outputs.go == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

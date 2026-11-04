@@ -1,0 +1,20 @@
+name: sast
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: { python-version: "3.12" }
+      - run: pip install "semgrep==1.183.0"
+      - name: semgrep（社区规则 + 本仓规则，只在本地运行，不上传结果）
+        run: semgrep scan --metrics=off --error --config p/javascript --config p/nodejsscan --config p/secrets --config p/github-actions --config .semgrep.yml --exclude public/app.js --exclude public/admin.js src scripts tests .github
