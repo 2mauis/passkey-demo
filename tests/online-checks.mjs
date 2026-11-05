@@ -1,11 +1,13 @@
 // 线上验收（无需通过 Turnstile 的部分）：真实 Turnstile 在自动化浏览器中会进入交互式挑战，
 // 我们不去自动点击/绕过人机验证，因此注册全流程在本地用测试密钥验证；线上验证所有拒绝路径 + 浏览器登录路径。
+import { assertSafeBase } from '../scripts/safe-base.mjs';
 import { chromium } from 'playwright';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 // 邀请码：通过管理接口创建测试邀请（token 取自 .admin-token，不打印；邀请码明文也不打印），
 //         用完立即撤销，最后确认线上没有留下任何有效邀请。
 const BASE = process.env.BASE_URL || 'https://passkey-demo.example.workers.dev';
+assertSafeBase(BASE); // 管理 token 只发往 https 或本机 http
 const WAIT_EXPIRY = process.env.SKIP_EXPIRY !== '1';
 const t0 = Date.now(); let pass = 0, total = 0;
 const log = (...a) => console.log(...a);
@@ -57,7 +59,7 @@ const invExp = await createInvite({ ttlSeconds: 60 });
 log(`      已创建 TTL=60 秒的测试邀请 id=${invExp.id}`);
 
 // 2b. 邀请码拒绝路径（在 Turnstile 之前；全部应为同一个 403 + 同一段文字）
-const nameA = 'demo_' + Math.random().toString(36).slice(2, 10), nameB = 'demo_' + Math.random().toString(36).slice(2, 10);
+const nameA = 'demo_' + randomBytes(5).toString('hex').slice(0, 8), nameB = 'demo_' + randomBytes(5).toString('hex').slice(0, 8);
 const rej = {};
 const tReg0 = Date.now();
 rej['没有邀请码'] = await post('/api/register/options', { username: nameA });

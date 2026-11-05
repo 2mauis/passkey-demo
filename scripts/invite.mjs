@@ -10,7 +10,8 @@
 //   --token-file <路径>  默认 <项目根>/.admin-token（应为 chmod 600）
 //   --local              本地 wrangler dev：base=http://localhost:8787，token 取自 .dev.vars 中的 ADMIN_TOKEN（与线上不同）
 //   --json               以 JSON 输出（create 的输出包含邀请码明文，请只发给受邀人）
-import { readFileSync, statSync } from 'node:fs';
+import { openSync, fstatSync, readFileSync, closeSync } from 'node:fs';
+import { assertSafeBase } from './safe-base.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -37,13 +38,18 @@ function loadToken() {
     return m[1].trim();
   }
   const file = flags['token-file'] || join(ROOT, '.admin-token');
-  let st;
-  try { st = statSync(file); } catch { die(`找不到管理 token 文件：${file}`); }
-  if (st.mode & 0o077) console.error(`警告：${file} 的权限过宽，建议 chmod 600`);
-  const t = readFileSync(file, 'utf8').trim();
+  // 先 open，再对同一 fd 做 fstat 与读取：检查与使用的是同一个文件（无 stat→read 竞态）
+  let fd;
+  try { fd = openSync(file, 'r'); } catch { die(`找不到管理 token 文件：${file}`); }
+  let t;
+  try {
+    if (fstatSync(fd).mode & 0o077) console.error(`警告：${file} 的权限过宽，建议 chmod 600`);
+    t = readFileSync(fd, 'utf8').trim();
+  } finally { closeSync(fd); }
   if (t.length < 32) die('管理 token 文件内容无效（过短）');
   return t;
 }
+try { assertSafeBase(BASE); } catch (e) { die(e.message); }
 const TOKEN = loadToken();
 
 function parseTtl(s) {

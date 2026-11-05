@@ -6,6 +6,7 @@
 //   线上：BASE_URL=https://passkey-demo.example.workers.dev node tests/admin-ui.mjs
 //         线上注册需要真人通过 Turnstile，脚本没有带角色的 passkey 会话：只测拒绝路径、静态资源、邀请链接自动填充，以及（应急 Bearer 入口）接口逻辑。
 // 不打印任何 token、邀请码、会话 cookie 明文；结束前撤销本脚本创建的所有邀请。
+import { randomBytes } from 'node:crypto';
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -37,7 +38,7 @@ async function stopDev() {
   await sleep(2500);
   dev = null;
 }
-const rand = () => Math.random().toString(36).slice(2, 10);
+const rand = () => randomBytes(5).toString('hex').slice(0, 8);
 const results = [];
 const T0 = Date.now();
 function check(name, ok, detail = '') {

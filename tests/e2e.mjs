@@ -5,16 +5,18 @@
 // 说明：接口有限流（每 IP 每接口 10 次/60 秒），脚本会主动控制节奏，最后才专门触发 429。
 // 邀请码：脚本通过管理接口创建测试邀请（本地 token 取自 .dev.vars 的 ADMIN_TOKEN，线上取自 .admin-token），
 //         token 和邀请码明文都不会打印；结束前撤销所有本脚本创建且未用掉的邀请。
+import { assertSafeBase } from '../scripts/safe-base.mjs';
 import { chromium, request as pwRequest } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 
 const BASE = (process.env.BASE_URL || 'http://localhost:8787').replace(/\/$/, '');
+assertSafeBase(BASE); // 管理 token 只发往 https 或本机 http
 const ORIGIN = new URL(BASE).origin;
 const LOCAL = new URL(BASE).hostname === 'localhost';
 const SHOT = process.env.SHOT || (LOCAL ? 'shots/logged-in-local.png' : 'shots/logged-in.png');
 const HEADED = process.env.HEADED === '1';
-const rand = () => Math.random().toString(36).slice(2, 10);
+const rand = () => randomBytes(5).toString('hex').slice(0, 8);
 const user = 'demo_' + rand();
 const results = [];
 const T0 = Date.now();

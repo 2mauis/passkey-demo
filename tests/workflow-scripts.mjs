@@ -1,6 +1,8 @@
 // 工作流脚本单元测试：privacy-scan 规则、agent-trailer、spec-requires-tests（纯函数，不需要网络）
 // 用法：node tests/workflow-scripts.mjs
-import { scanText } from '../scripts/privacy-scan.mjs';
+import { scanText, shouldSkip } from '../scripts/privacy-scan.mjs';
+import { assertSafeBase } from '../scripts/safe-base.mjs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { checkAgentTrailer } from '../scripts/agent-trailer.mjs';
 import { checkSpecTests } from '../scripts/check-spec-tests.mjs';
 const R = []; const check = (n, ok) => { R.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}`); };
@@ -24,4 +26,8 @@ check('trailer：author 与 Agent 不匹配失败', checkAgentTrailer({ message:
 check('spec：改 spec 不改测试失败', checkSpecTests(['docs/specs/a.md']) === false);
 check('spec：改 spec 同时改 tests/*.mjs 通过', checkSpecTests(['docs/specs/a.md', 'tests/a.mjs']) === true);
 check('spec：TEMPLATE.md 豁免；删除 spec 不触发', checkSpecTests(['docs/specs/TEMPLATE.md']) && checkSpecTests(['docs/specs/a.md'], []));
+check('privacy：跳过 node_modules / .wrangler / package-lock.json 与图片，不误跳相似文件名', shouldSkip('node_modules/a.js') && shouldSkip('x/.wrangler/s.json') && shouldSkip('package-lock.json') && shouldSkip('shots/a.PNG') && !shouldSkip('docs/node_modules-notes.md') && !shouldSkip('src/package-lock.json.md') && !shouldSkip('src/worker.js'));
+const throws = (fn) => { try { fn(); return false; } catch { return true; } };
+check('invite：非 localhost 的 http 目标被拒绝（不发送 token）', throws(() => assertSafeBase('http://app.example.com')) && throws(() => assertSafeBase('http://localhost.example.com')) && assertSafeBase('https://app.example.com/x') === 'https://app.example.com' && assertSafeBase('http://localhost:8787') === 'http://localhost:8787');
+check('tests 不使用非加密随机数', readdirSync(new URL('.', import.meta.url)).filter((f) => f.endsWith('.mjs')).every((f) => !readFileSync(new URL(f, import.meta.url), 'utf8').includes('Math.' + 'random')));
 const f = R.filter((x) => !x).length; console.log(`结果：${R.length - f}/${R.length} 通过`); process.exit(f ? 1 : 0);

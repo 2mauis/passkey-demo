@@ -27,7 +27,13 @@ export const RULES = [
 ];
 const words = process.env.PRIVACY_WORDLIST && existsSync(process.env.PRIVACY_WORDLIST)
   ? readFileSync(process.env.PRIVACY_WORDLIST, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean) : [];
-const SKIP = /(^|\/)(package-lock\.json|node_modules\/|\.wrangler\/)|\.(png|jpe?g|gif|webp|ico|woff2?)$/i;
+const SKIP_DIRS = new Set(['node_modules', '.wrangler']);
+const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|woff2?)$/i;
+// 按路径段判断，避免未锚定的正则分支误跳相似文件名（如 my-node_modules-notes.md）
+export function shouldSkip(file) {
+  const parts = String(file).split('/');
+  return parts.slice(0, -1).some((p) => SKIP_DIRS.has(p)) || parts[parts.length - 1] === 'package-lock.json' || BINARY_EXT.test(file);
+}
 
 export function scanText(text, where) {
   const hits = [];
@@ -49,11 +55,11 @@ function main() {
     for (const line of git('diff', '--no-ext-diff', '-U0', `${rest[0]}...HEAD`).split('\n')) {
       if (line.startsWith('+++ ')) { file = line.slice(6); continue; }
       const h = /^@@ -\S+ \+(\d+)/.exec(line); if (h) { ln = Number(h[1]); continue; }
-      if (line.startsWith('+') && !SKIP.test(file)) { hits.push(...scanText(line.slice(1), `${file}`).map((x) => x.replace(/:1 /, `:${ln} `))); ln++; }
+      if (line.startsWith('+') && !shouldSkip(file)) { hits.push(...scanText(line.slice(1), `${file}`).map((x) => x.replace(/:1 /, `:${ln} `))); ln++; }
     }
   } else {
     for (const f of git('ls-files', '-z').split('\0').filter(Boolean)) {
-      if (SKIP.test(f) || !existsSync(f)) continue;
+      if (shouldSkip(f) || !existsSync(f)) continue;
       const buf = readFileSync(f); if (buf.includes(0)) continue;
       hits.push(...scanText(buf.toString('utf8'), f));
     }
