@@ -1,9 +1,9 @@
 // 线上验收（无需通过 Turnstile 的部分）：真实 Turnstile 在自动化浏览器中会进入交互式挑战，
 // 我们不去自动点击/绕过人机验证，因此注册全流程在本地用测试密钥验证；线上验证所有拒绝路径 + 浏览器登录路径。
-import { assertSafeBase } from '../scripts/safe-base.mjs';
+import { assertSafeBase } from '../../../scripts/safe-base.mjs';
+import { loadAdminToken } from '../../../scripts/load-admin-token.mjs';
 import { chromium } from 'playwright';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 // 邀请码：通过管理接口创建测试邀请（token 取自 .admin-token，不打印；邀请码明文也不打印），
 //         用完立即撤销，最后确认线上没有留下任何有效邀请。
 const BASE = process.env.BASE_URL || 'https://passkey-demo.example.workers.dev';
@@ -33,7 +33,7 @@ const oldCookie = oldOpt.setCookie.find((c) => c.startsWith('__Host-pk_chal_auth
 check('login/options 返回 200 并下发 __Host- 签名 cookie（HttpOnly; Secure; SameSite=Lax）', oldOpt.status === 200 && !!oldCookie && /HttpOnly/i.test(oldOpt.setCookie.join()) && /SameSite=Lax/i.test(oldOpt.setCookie.join()) && /Secure/i.test(oldOpt.setCookie.join()), `HTTP ${oldOpt.status}; Set-Cookie 属性=${oldOpt.setCookie.map((c) => c.split(';').slice(1).join(';')).join(' | ')}`);
 
 // 2a. 管理接口鉴权
-const ADMIN_TOKEN = readFileSync('.admin-token', 'utf8').trim();
+const ADMIN_TOKEN = loadAdminToken(BASE, '.admin-token');
 const AH = { 'content-type': 'application/json', origin: BASE, authorization: `Bearer ${ADMIN_TOKEN}` };
 async function admin(method, path, body, headers = AH) {
   const r = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });

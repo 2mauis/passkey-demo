@@ -5,7 +5,7 @@
 // 说明：接口有限流（每 IP 每接口 10 次/60 秒），脚本会主动控制节奏，最后才专门触发 429。
 // 邀请码：脚本通过管理接口创建测试邀请（本地 token 取自 .dev.vars 的 ADMIN_TOKEN，线上取自 .admin-token），
 //         token 和邀请码明文都不会打印；结束前撤销所有本脚本创建且未用掉的邀请。
-import { assertSafeBase } from '../../../scripts/safe-base.mjs';
+import { loadAdminToken } from '../../../scripts/load-admin-token.mjs';
 import { chromium, request as pwRequest } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createHmac, randomBytes } from 'node:crypto';
@@ -16,7 +16,6 @@ const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const REPO_ROOT = dirname(dirname(APP_ROOT));
 
 const BASE = (process.env.BASE_URL || 'http://localhost:8787').replace(/\/$/, '');
-assertSafeBase(BASE); // 管理 token 只发往 https 或本机 http
 const ORIGIN = new URL(BASE).origin;
 const LOCAL = new URL(BASE).hostname === 'localhost';
 const SHOT = process.env.SHOT || (LOCAL ? 'shots/logged-in-local.png' : 'shots/logged-in.png');
@@ -49,9 +48,7 @@ async function budget(path, n = 1) {
 }
 
 // ---- 管理接口（创建 / 撤销测试邀请）----
-const ADMIN_TOKEN = LOCAL
-  ? /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP_ROOT, '.dev.vars'), 'utf8'))[1].trim()
-  : readFileSync(join(REPO_ROOT, '.admin-token'), 'utf8').trim();
+const ADMIN_TOKEN = loadAdminToken(BASE, LOCAL ? join(APP_ROOT, '.dev.vars') : join(REPO_ROOT, '.admin-token'), { dotenv: LOCAL });
 const AH = { 'Content-Type': 'application/json', Origin: ORIGIN, Authorization: `Bearer ${ADMIN_TOKEN}` };
 const INVITE_ERR = /邀请码无效或已失效/;
 const created = []; // 本脚本创建的邀请（用于结束前清理）

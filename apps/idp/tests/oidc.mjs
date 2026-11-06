@@ -4,7 +4,8 @@
 //   阶段 2：用 .dev.vars 里的密钥重启（同一持久化目录）→ 旧 passkey 登录并走完整 OIDC 流程
 // RP 回调地址 localhost:8788/8798：测试内起最小 HTTP 服务只记录回调 URL。不打印任何 token、code、cookie。
 import { chromium } from 'playwright';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { loadAdminToken } from '../../../scripts/load-admin-token.mjs';
+import { mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createPublicKey, verify as nodeVerify } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -46,7 +47,7 @@ async function budget(path, n = 1) {
   }
   for (let i = 0; i < n; i++) hits[path].push(Date.now());
 }
-const TOKEN = /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP_ROOT, '.dev.vars'), 'utf8'))[1].trim();
+const TOKEN = loadAdminToken(BASE, join(APP_ROOT, '.dev.vars'), { dotenv: true });
 async function invite(username) {
   await budget('/api/admin/invites');
   const r = await fetch(BASE + '/api/admin/invites', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: BASE, Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ username, ttlSeconds: 600 }) });
