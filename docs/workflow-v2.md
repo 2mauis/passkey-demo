@@ -35,8 +35,9 @@
 4. 本地跑相关套件（见 AGENTS.md「测试」）并记录真实通过数。
 5. PR 必须有 `## 验收清单`（逐条打勾并附测试名 / 证据）与 `## staging → public 同步规则
 
-- 开发只在 private `2mauis/passkey-demo-staging`；main 只接受经 PR、全部检查通过后以 `gh pr merge --squash --match-head-commit <sha>` 合入的提交（不 --admin、不 force、不 --no-verify）。
+- 开发只在 private `2mauis/passkey-demo-staging`；main 只接受经 PR、全部检查通过后以 `gh pr merge --squash --match-head-commit <sha> --author-email 2908005+2mauis@users.noreply.github.com` 合入的提交（不 --admin、不 force、不 --no-verify）。`--author-email` 必须带：否则 squash 提交的作者会落成执行合并的账号邮箱并附带 Co-authored-by。
 - public `2mauis/passkey-demo` 只接收白名单快照：`.github/publish-allowlist.txt` 列出的文件，由 `scripts/publish-snapshot.sh` 导出、重跑 privacy-scan 与 gitleaks 后提交；首次为 orphan 单提交，之后每次在上一快照之上提交整树替换。不带 staging 历史；禁止 `--mirror`、`--all`、force push。
+- staging → public 只由 box 上手动运行 `scripts/publish-snapshot.sh` 完成：不配置 deploy key、不在 Actions 里放任何推送 public 的 secret；`publish.yml` 保留但不配置 `PUBLIC_REPO_DEPLOY_KEY`（缺失时预检退出 0），不作为同步途径。
 - 白名单新增文件需在 PR 中说明；测试日志、截图、分享物料、`.dev.vars`、`.private/` 永不进入白名单。
 - 隐私规则不变（见 AGENTS.md「公开仓库与隐私」）。
 
@@ -47,7 +48,7 @@
 - 部署、rollback、secret 变更、DO 迁移都属于重大改动，需 Jack 当次批准。
 
 ## 风险分级`（低 / 中 / 高与理由）。
-6. 合并前重新核对 head SHA、Codex 评审、全部 CI；`gh pr merge --squash --match-head-commit <sha>`。SHA 变化就重新检查。
+6. 合并前重新核对 head SHA、Codex 评审、全部 CI；`gh pr merge --squash --match-head-commit <sha> --author-email 2908005+2mauis@users.noreply.github.com`。SHA 变化就重新检查。
 
 ## Spec 优先与评审
 

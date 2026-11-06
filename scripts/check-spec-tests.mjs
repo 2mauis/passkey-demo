@@ -3,9 +3,10 @@
 // 同一 diff 必须触及 tests/*.mjs。删除 spec 不触发；重命名按删除 + 新增处理。
 // 只检查文件集合，测试质量由评审把关。用法：node scripts/check-spec-tests.mjs BASE_SHA
 import { execFileSync } from 'node:child_process';
+const TEST_FILE = /^(?:tests|apps\/idp\/tests|packages\/[^/]+\/tests|packages\/[^/]+\/test)\/[^/]+\.mjs$/;
 export function checkSpecTests(changed, addedOrModified = changed) {
   const hasSpec = addedOrModified.some((f) => /^docs\/specs\/[^/]+\.md$/.test(f) && !/^docs\/specs\/(TEMPLATE|README)\.md$/.test(f));
-  const hasTest = changed.some((f) => /^tests\/[^/]+\.mjs$/.test(f));
+  const hasTest = changed.some((f) => TEST_FILE.test(f));
   return !hasSpec || hasTest;
 }
 if (import.meta.url === `file://${process.argv[1]}`) {

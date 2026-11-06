@@ -21,14 +21,14 @@ rules:
     severity: ERROR
     message: 安全相关随机数必须用 crypto.getRandomValues / randomBytes
     paths:
-      include: [src/]
+      include: [apps/idp/src, packages]
     pattern: Math.random()
   - id: pk-session-cookie-flags
     languages: [javascript]
     severity: ERROR
     message: Set-Cookie 必须带 HttpOnly; Secure; SameSite
     paths:
-      include: [src/worker.js]
+      include: [apps/idp/src/worker.js, packages/workers/src]
     patterns:
       - pattern: "`$...X`"
       - metavariable-regex:

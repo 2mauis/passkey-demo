@@ -1,7 +1,7 @@
-name = "passkey-demo"
+name = "pkauth-idp"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
-workers_dev = true
+workers_dev = false
 preview_urls = false
 # 不配置 routes / custom domains：仅部署到 workers.dev
 
@@ -14,9 +14,10 @@ binding = "ASSETS"
 run_worker_first = true
 
 [vars]
-RP_ID = "passkey-demo.example.workers.dev"
-ORIGIN = "https://passkey-demo.example.workers.dev"
-RP_NAME = "Passkey 登录演示"
+# 占位域名（D2）。本地 .dev.vars 覆盖为 localhost。本文件不指向真实部署；workers.dev 保持关闭，避免误以为可以靠默认子域提供服务。
+RP_ID = "id.example.com"
+ORIGIN = "https://id.example.com"
+RP_NAME = "pkauth"
 TURNSTILE_SITEKEY = "1x00000000000000000000AA"
 # 负责人（principal，最高角色）名单，逗号分隔、大小写敏感。只能在这里配置，页面上不能授予或移除；其余角色（成员主管、邀请人）由负责人在 /admin 页面分配，存 KV。
 # 每次请求按会话里的用户名实时判断；留空 = 没有负责人。修改后需重新部署（npx wrangler deploy）。
@@ -25,6 +26,12 @@ PRINCIPALS = "root_example"
 [[kv_namespaces]]
 binding = "KV"
 id = "00000000000000000000000000000000"
+
+# D1（D4）代码路径在 src/store.js。未绑定 DB 时继续用 KV。上线前由 Jack 创建数据库并批准迁移；这里不写真实 database_id。
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "pkauth"
+# database_id = "00000000000000000000000000000000"
 
 # 强一致状态（Durable Object，SQLite 存储）：一次性 challenge / 恢复码 / OTP 的原子消费、服务端会话表、登录环境历史。
 # 注意：这是新增绑定 + 迁移，上线前需 Jack 批准（见 docs/session.md「部署步骤」）；本地 wrangler dev 会自动模拟。

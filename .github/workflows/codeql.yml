@@ -10,7 +10,8 @@ on:
 permissions: {}
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    # 静态名：私有仓里该 job 被 if 跳过时矩阵不展开，带 ${{ matrix.* }} 的名字会原样显示；GitHub 会自动在矩阵 job 名后追加 (语言)
+    name: Analyze
     if: github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 30

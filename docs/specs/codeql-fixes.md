@@ -15,10 +15,10 @@ public 仓首次 CodeQL（javascript-typescript）扫描报告 27 条 open alert
 - js/insecure-randomness（tests/）：测试用户名后缀改用 node:crypto randomBytes。
 
 ## 验收测试清单
-- [ ] `tests/workflow-scripts.mjs`「privacy：跳过 node_modules / .wrangler / package-lock.json 与图片，不误跳相似文件名」。
-- [ ] `tests/workflow-scripts.mjs`「invite：非 localhost 的 http 目标被拒绝（不发送 token）」。
-- [ ] tests/ 中不再出现非加密随机数（`tests/workflow-scripts.mjs`「tests 不使用非加密随机数」）。
-- [ ] 合并后 public 仓 CodeQL 重跑，回报剩余 open alert 数量与分类。
+- [x] `tests/workflow-scripts.mjs`「privacy：跳过 node_modules / .wrangler / package-lock.json 与图片，不误跳相似文件名」。
+- [x] `tests/workflow-scripts.mjs`「invite：非 localhost 的 http 目标被拒绝（不发送 token）」。
+- [x] tests/ 中不再出现非加密随机数（`tests/workflow-scripts.mjs`「tests 不使用非加密随机数」）。
+- [x] 合并后 public 仓 CodeQL 重跑，回报剩余 open alert 数量与分类（2026-11-05 核对：public main 上 0 个 open alert）。
 
 ## 风险
 CodeQL 对 file-access-to-http 的判断基于数据流，https 约束不一定让告警消失；处理理由需公开说明。

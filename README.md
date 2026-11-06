@@ -1,3 +1,7 @@
+# pkauth（Passkey IdP + Workers SDK）
+
+仓库是 monorepo。IdP 在 `apps/idp`（原先的 `src/`、`public/`、`tests/`、`wrangler.toml`）。`@pkauth/core` 与 `@pkauth/workers` 在 `packages/`，只通过 npm workspace 引用，不发布到 npm。下面表格里的 `src/`、`tests/`、`wrangler.toml` 均相对于 `apps/idp/`。
+
 # Passkey（WebAuthn）登录演示
 
 线上地址：<https://passkey-demo.example.workers.dev>（仅为演示，请勿输入真实个人信息）

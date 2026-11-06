@@ -42,6 +42,10 @@
 
   <section id="authed" class="card" hidden>
     <h2>已登录</h2>
+    <div id="oidc-box" hidden>
+      <p>发起登录的应用要求你重新验证 passkey。</p>
+      <button id="btn-oidc-continue" type="button">验证 passkey 并返回应用</button>
+    </div>
     <p>当前用户：<strong id="me-name"></strong></p>
     <p id="admin-link" hidden>🛡️ 你的角色：<strong id="admin-role"></strong> · <a href="/admin">邀请管理（签发 / 列表 / 撤销）</a></p>
     <h3>已绑定的 passkey（<span id="me-count">0</span> / <span id="me-max">5</span>）</h3>
@@ -51,8 +55,10 @@
     </table>
     <div class="row">
       <button id="btn-add" type="button">为当前账号再添加一个 passkey</button>
+      <button id="btn-migrate" type="button" class="secondary">迁移到新站</button>
       <button id="btn-logout" type="button" class="secondary">退出登录</button>
     </div>
+    <p id="migrate-link-wrap" hidden><a id="migrate-link" href="/migrate">前往新站登记 passkey</a></p>
   </section>
 
   <details id="debug">

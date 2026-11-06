@@ -28,4 +28,17 @@ await s.alarm();
 check('alarm 删除放弃的过期 challenge，保留未过期的', !st.m.has('chal:old') && st.m.has('chal:new'));
 check('alarm 删除过期环境历史与过期会话，并清理空的用户索引', !st.m.has('env:u2') && !st.m.has('s:sx') && !st.m.has('us:u3'));
 check('仍有未过期记录时 alarm 继续排期', typeof st.alarm === 'number');
+
+const t0 = Date.now();
+const h1 = 'h-old', h2 = 'h-new', fam = 'fam-1';
+await s.rtIssue(h1, fam, { username: 'ada', cid: 'ainews' }, 120000);
+const first = await s.rtCommit(h1, h2, { refresh_token: 'rt-new', access_token: 'at-new' }, 30000, t0);
+check('refresh 轮换提交成功', first.status === 'ok');
+const grace = await s.rtCommit(h1, 'h-other', { refresh_token: 'rt-other' }, 30000, t0 + 1000);
+check('宽限内重放刚刚轮换的 refresh 返回同一份新 token', grace.status === 'grace' && grace.replay.refresh_token === 'rt-new');
+const late = await s.rtCommit(h1, 'h-late', { refresh_token: 'rt-late' }, 30000, t0 + 30001);
+check('超过宽限再重放吊销整个系列', late.status === 'reuse');
+const dead = await s.rtPeek(h2, 30000, t0 + 30002);
+check('家族被吊销后新 refresh 也失效', dead.status === 'invalid');
+
 const ok = R.filter(Boolean).length; console.log(`\n结果：${ok}/${R.length} 通过`); process.exitCode = ok === R.length ? 0 : 1;

@@ -7,7 +7,7 @@
 
 1. 先读 README、docs/workflow-v2.md、docs/workflow.md、docs/session.md、docs/roles-and-templates.md、docs/recovery.md。
 2. `git status` 检查工作区；保留不属于本次任务的修改，只 `git add` 自己改的文件。
-3. 本地开发：`cp .dev.vars.example .dev.vars` 并填两个本地随机密钥；`npm ci && npm run build && npx wrangler dev`。
+3. 本地开发：`cp apps/idp/.dev.vars.example apps/idp/.dev.vars` 并填两个本地随机密钥，`node scripts/oidc-keygen.mjs apps/idp/.dev.vars` 生成 OIDC 签名私钥；`npm ci && npm run build && npm run dev`。
 
 ## 硬边界（未经 Jack 当次批准一律不做）
 
@@ -16,6 +16,11 @@
 - 新增任何“创建管理员 / 提升为负责人”的入口（负责人只由 wrangler.toml 的 PRINCIPALS 决定）。
 - `git push --force`、`--mirror`、`--all`、`gh pr merge --admin`、`--no-verify`。
 - 削弱或跳过 CI 检查以求通过。
+
+## 合并与同步
+
+- staging 合并一律：`gh pr merge --squash --match-head-commit <sha> --author-email 2908005+2mauis@users.noreply.github.com`（不带 `--author-email` 会把作者记成执行合并的账号并附 Co-authored-by）。
+- staging → public 只在 box 上手动运行 `scripts/publish-snapshot.sh`；不配置 deploy key，不在 Actions 放推送 public 的 secret。
 
 ## 公开仓库与隐私
 
@@ -34,11 +39,11 @@
 
 | 命令 | 内容 |
 |---|---|
-| `node tests/risk.mjs` | 风险评估纯函数 |
+| `npm run test:unit` | core、workers SDK、IdP 纯函数、workflow 脚本 |
 | `node tests/workflow-scripts.mjs` | 隐私扫描 / trailer / spec 检查脚本 |
-| `node tests/session.mjs` | 会话预设、step-up、会话吊销、异常登录、强制 UV、challenge 一次性（自启 wrangler dev） |
-| `node tests/expiry-roles.mjs` | 账户过期、分级、权限覆盖、模板、审计、恢复 501（自启 wrangler dev） |
-| `node tests/admin-ui.mjs` | 管理页角色与越权（自启 wrangler dev） |
-| `npx wrangler dev` + `BASE_URL=http://localhost:8787 node tests/e2e.mjs` | 端到端注册 / 登录 |
+| `node apps/idp/tests/session.mjs` | 会话预设、step-up、会话吊销、异常登录、强制 UV、challenge 一次性（自启 wrangler dev） |
+| `node apps/idp/tests/expiry-roles.mjs` | 账户过期、分级、权限覆盖、模板、审计、恢复 501（自启 wrangler dev） |
+| `node apps/idp/tests/admin-ui.mjs` | 管理页角色与越权（自启 wrangler dev） |
+| 在 `apps/idp` 里 `npx wrangler dev` + `BASE_URL=http://localhost:8787 node tests/e2e.mjs` | 端到端注册 / 登录 |
 
 自启 wrangler dev 的套件占用 8787 端口，须依次运行。

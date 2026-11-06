@@ -1,0 +1,11 @@
+{
+  "name": "@pkauth/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebCrypto JWT/JWKS (ES256), path rules, cookie seal, config schema. No runtime dependencies.",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": ["src"]
+}

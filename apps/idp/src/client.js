@@ -5,6 +5,7 @@ import {
   browserSupportsWebAuthnAutofill,
   WebAuthnAbortService,
 } from '@simplewebauthn/browser';
+import { safeContinue } from './oidc-core.js';
 
 const $ = (id) => document.getElementById(id);
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,32}$/;
@@ -127,6 +128,37 @@ function webauthnErr(e) {
   return e?.message || String(e);
 }
 
+// OIDC：/oauth/authorize 发现未登录 / 需要 step-up 时会跳回 /?continue=<authorize 路径>[&stepup=1]。
+// continue 只接受同源 /oauth/authorize?…（safeContinue）；登录或 step-up 完成后回到 authorize，由服务端再判断一次。
+let oidcContinue = null, oidcStepUp = false, justLoggedIn = false;
+function readContinueFromUrl() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('continue')) return;
+  oidcContinue = safeContinue(q.get('continue'), location.origin);
+  oidcStepUp = q.get('stepup') === '1';
+  history.replaceState(null, '', location.pathname + location.hash);
+  if (oidcContinue) setStatus(oidcStepUp ? '应用要求重新验证 passkey 后继续。' : '登录后将自动返回发起登录的应用。');
+}
+function maybeContinue() {
+  if (!oidcContinue) return;
+  if (oidcStepUp && !justLoggedIn) { $('oidc-box').hidden = false; return; }
+  const to = oidcContinue; oidcContinue = null;
+  location.assign(to);
+}
+async function startMigrate() {
+  try {
+    const data = await api('/api/migrate/ticket', {});
+    const link = $('migrate-link');
+    link.href = data.url;
+    link.textContent = '前往新站登记 passkey';
+    $('migrate-link-wrap').hidden = false;
+    setStatus('迁移票据已签发（5 分钟、一次性）。请打开下面的链接，在新站登记 passkey。', 'ok');
+  } catch (e) { setStatus(`迁移失败：${webauthnErr(e)}`, 'err'); }
+}
+async function oidcStepUpAndContinue() {
+  try { await stepUp(); justLoggedIn = true; maybeContinue(); } catch (e) { setStatus(`验证失败：${webauthnErr(e)}`, 'err'); }
+}
+
 async function refresh() {
   const me = await api('/api/me');
   if (me.loggedIn) {
@@ -148,6 +180,7 @@ async function refresh() {
     }
     $('btn-add').disabled = me.credentials.length >= me.maxPasskeys;
     $('btn-add').title = me.credentials.length >= me.maxPasskeys ? '已达上限' : '';
+    maybeContinue();
   } else {
     $('authed').hidden = true;
     $('anon').hidden = false;
@@ -224,6 +257,7 @@ async function finishLogin(cred, conditional) {
     const r = await api('/api/login/verify', { credential: cred, conditional });
     debug('登录验证结果（服务端）', r.debug);
     setStatus(`登录成功：${r.username}`, 'ok');
+    justLoggedIn = true;
   } catch (e) {
     if (e.data?.debug) debug('登录验证结果（服务端）', e.data.debug);
     throw e;
@@ -293,8 +327,11 @@ async function init() {
   $('cond-form').addEventListener('submit', (ev) => ev.preventDefault());
   $('btn-login').addEventListener('click', doLogin);
   $('btn-add').addEventListener('click', () => doRegister(null));
+  $('btn-migrate').addEventListener('click', startMigrate);
   $('btn-logout').addEventListener('click', doLogout);
   if (autofill) $('login-autofill').addEventListener('focus', startConditional);
+  $('btn-oidc-continue').addEventListener('click', oidcStepUpAndContinue);
+  readContinueFromUrl();
   readInviteFromUrl();
   window.addEventListener('hashchange', readInviteFromUrl);
   try { await refresh(); } catch (e) { setStatus(`加载失败：${e.message}`, 'err'); }

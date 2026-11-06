@@ -7,6 +7,10 @@ import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const BASE = 'http://localhost:8787';
 const ORIGIN = BASE;
@@ -21,7 +25,7 @@ const log = (...a) => console.log('     ', ...a);
 let dev = null;
 async function startDev(extra = []) {
   mkdirSync(PERSIST, { recursive: true });
-  dev = spawn('npx', ['wrangler', 'dev', '--port', '8787', '--persist-to', PERSIST, ...extra], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  dev = spawn('npx', ['wrangler', 'dev', '--port', '8787', '--persist-to', PERSIST, ...extra], { cwd: APP_ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = ''; dev.stdout.on('data', (d) => { out += d; }); dev.stderr.on('data', (d) => { out += d; });
   for (let i = 0; i < 120; i++) { await sleep(500); if (/Ready on/.test(out)) { await sleep(500); return; } }
   console.log(out.slice(-800)); throw new Error('wrangler dev 启动超时');
@@ -43,7 +47,7 @@ async function budget(path, n = 1) {
   }
   for (let i = 0; i < n; i++) hits[path].push(Date.now());
 }
-const TOKEN = /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync('.dev.vars', 'utf8'))[1].trim();
+const TOKEN = /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP_ROOT, '.dev.vars'), 'utf8'))[1].trim();
 const JH = { 'Content-Type': 'application/json', Origin: ORIGIN };
 async function raw(method, path, { headers = {}, body } = {}) {
   await budget(path);

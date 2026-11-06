@@ -109,6 +109,52 @@ export class AuthState extends DurableObject {
     return n;
   }
 
+  // ---- OIDC refresh token 系列 ----
+  // rt:<hash> = { exp, data: { fam } }；rf:<fam> = { exp, data: { cur, prev, rotatedAt, revoked, grant, replay } }
+  // replay 只在轮换后的宽限窗口内保存刚刚签发的 token 响应，供并发重放返回同一份（D6）。不写日志。
+  async rtIssue(hash, fam, grant, ttlMs) {
+    const exp = Date.now() + ttlMs;
+    await this._put(`rf:${fam}`, { exp, data: { cur: hash, revoked: false, grant } });
+    await this._put(`rt:${hash}`, { exp, data: { fam } });
+  }
+  async rtPeek(oldHash, graceMs = 30000, now = Date.now()) {
+    const t = await this._get(`rt:${oldHash}`, now);
+    if (!t) return { status: 'invalid' };
+    const f = await this._get(`rf:${t.data.fam}`, now);
+    if (!f || f.data.revoked) return { status: 'invalid' };
+    if (f.data.cur === oldHash) return { status: 'current', grant: f.data.grant, fam: t.data.fam, exp: f.exp };
+    if (graceMs > 0 && f.data.prev === oldHash && f.data.replay && now <= f.data.rotatedAt + graceMs) {
+      return { status: 'grace', replay: f.data.replay, fam: t.data.fam };
+    }
+    return { status: 'stale', grant: f.data.grant, fam: t.data.fam };
+  }
+  async rtCommit(oldHash, newHash, replay, graceMs = 30000, now = Date.now()) {
+    const t = await this._get(`rt:${oldHash}`, now);
+    if (!t) return { status: 'invalid' };
+    const fam = t.data.fam;
+    const f = await this._get(`rf:${fam}`, now);
+    if (!f || f.data.revoked) return { status: 'invalid' };
+    if (f.data.cur !== oldHash) {
+      if (graceMs > 0 && f.data.prev === oldHash && f.data.replay && now <= f.data.rotatedAt + graceMs) {
+        return { status: 'grace', replay: f.data.replay, fam };
+      }
+      f.data.revoked = true;
+      await this.ctx.storage.put(`rf:${fam}`, f);
+      return { status: 'reuse', grant: f.data.grant, fam };
+    }
+    f.data.prev = oldHash;
+    f.data.cur = newHash;
+    f.data.rotatedAt = now;
+    if (replay) f.data.replay = replay;
+    await this.ctx.storage.put(`rf:${fam}`, f);
+    await this._put(`rt:${newHash}`, { exp: f.exp, data: { fam } });
+    return { status: 'ok', grant: f.data.grant, fam, exp: f.exp, replay };
+  }
+  async rtRevokeFamily(fam) {
+    const f = await this._get(`rf:${fam}`, Date.now());
+    if (f) { f.data.revoked = true; await this.ctx.storage.put(`rf:${fam}`, f); }
+  }
+
   // ---- 登录环境历史（只存国家代码、ASN、HMAC 指纹，不存原始 IP）----
   async envGet(username) {
     const v = await this._get(`env:${username}`, Date.now());

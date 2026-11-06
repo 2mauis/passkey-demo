@@ -1,0 +1,17 @@
+{
+  "name": "@pkauth/workers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Workers / Pages adapter: protect(upstream), /_pkauth/* routes, rules, CSRF, upstream inject.",
+  "exports": {
+    ".": "./src/index.js",
+    "./pages": "./src/pages.js"
+  },
+  "dependencies": {
+    "@pkauth/core": "0.1.0"
+  },
+  "devDependencies": {
+    "jose": "^6.1.0"
+  }
+}

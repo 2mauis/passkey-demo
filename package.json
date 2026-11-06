@@ -1,28 +1,20 @@
 {
-  "name": "passkey-demo",
-  "version": "1.0.0",
-  "description": "",
-  "scripts": {
-    "build": "esbuild src/client.js --bundle --format=esm --minify --target=es2020 --outfile=public/app.js && esbuild src/admin.js --bundle --format=esm --minify --target=es2020 --outfile=public/admin.js",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "test:e2e": "node tests/e2e.mjs"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@simplewebauthn/browser": "^14.0.0",
-    "@simplewebauthn/server": "^14.0.3"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2",
-    "jsqr": "^1.4.0",
-    "playwright": "^1.64.1",
-    "pngjs": "^7.0.0",
-    "qrcode": "^1.5.4",
-    "wrangler": "^4.152.0"
-  },
+  "name": "pkauth",
+  "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "description": "pkauth monorepo: IdP (apps/idp) plus @pkauth/core and @pkauth/workers. Packages are workspace dependencies only; not published.",
+  "workspaces": [
+    "apps/idp",
+    "packages/core",
+    "packages/workers",
+    "packages/node",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build": "npm run build -w pkauth-idp",
+    "dev": "npm run dev -w pkauth-idp",
+    "test:unit": "node tests/workflow-scripts.mjs && node packages/core/tests/core.test.mjs && node packages/workers/tests/sdk.test.mjs && node packages/workers/tests/jose-cross.test.mjs && node apps/idp/tests/risk.mjs && node apps/idp/tests/state-unit.mjs && node apps/idp/tests/oidc-unit.mjs && node apps/idp/tests/pkauth-idp-unit.mjs"
+  },
+  "license": "MIT"
 }

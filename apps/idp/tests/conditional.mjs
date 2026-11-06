@@ -1,10 +1,15 @@
 // 尝试验证条件式 UI（自动填充）登录。headless + 虚拟认证器下自动填充下拉框无法被“点击”，
 // 因此本脚本仅作探索：聚焦输入框后观察是否会自动完成登录。
 // 加固版：注册前需等待 Turnstile 小组件给出 token（本地为测试密钥 dummy token，线上为真实 managed 挑战）。
-import { assertSafeBase } from '../scripts/safe-base.mjs';
+import { assertSafeBase } from '../../../scripts/safe-base.mjs';
 import { randomBytes } from 'node:crypto';
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const REPO_ROOT = dirname(dirname(APP_ROOT));
 const BASE = (process.env.BASE_URL || 'http://localhost:8787').replace(/\/$/, '');
 assertSafeBase(BASE); // 管理 token 只发往 https 或本机 http
 const browser = await chromium.launch({ headless: process.env.HEADED !== '1' });
@@ -16,7 +21,7 @@ await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2
 const user = 'demo_c' + randomBytes(3).toString('hex');
 // 通过管理接口创建一个绑定该用户名的一次性邀请（token 不打印；注册成功后邀请自动失效）
 const LOCAL = new URL(BASE).hostname === 'localhost';
-const ADMIN_TOKEN = LOCAL ? /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync('.dev.vars', 'utf8'))[1].trim() : readFileSync('.admin-token', 'utf8').trim();
+const ADMIN_TOKEN = LOCAL ? /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP_ROOT, '.dev.vars'), 'utf8'))[1].trim() : readFileSync(join(REPO_ROOT, '.admin-token'), 'utf8').trim();
 const ir = await fetch(BASE + '/api/admin/invites', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: new URL(BASE).origin, Authorization: `Bearer ${ADMIN_TOKEN}` }, body: JSON.stringify({ username: user, ttlSeconds: 600 }) });
 const inv = await ir.json();
 if (ir.status !== 200) { console.log('FAIL 创建邀请失败 HTTP', ir.status); process.exit(1); }

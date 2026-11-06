@@ -6,7 +6,7 @@
 //   node scripts/invite.mjs revoke <id>                           撤销邀请（id 为 16 位十六进制，见 create / list 输出）
 //
 // 通用选项：
-//   --base <URL>         默认 https://passkey-demo.example.workers.dev
+//   --base <URL>         默认 https://id.example.com
 //   --token-file <路径>  默认 <项目根>/.admin-token（应为 chmod 600）
 //   --local              本地 wrangler dev：base=http://localhost:8787，token 取自 .dev.vars 中的 ADMIN_TOKEN（与线上不同）
 //   --json               以 JSON 输出（create 的输出包含邀请码明文，请只发给受邀人）
@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const APP = join(ROOT, 'apps/idp');
 const args = process.argv.slice(2);
 const flags = {};
 const pos = [];
@@ -30,10 +31,10 @@ const die = (msg, code = 1) => { console.error(msg); process.exit(code); };
 const usage = () => die(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 14).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'), 2);
 if (!['create', 'list', 'revoke'].includes(cmd)) usage();
 
-const BASE = (flags.base || (flags.local ? 'http://localhost:8787' : 'https://passkey-demo.example.workers.dev')).replace(/\/$/, '');
+const BASE = (flags.base || (flags.local ? 'http://localhost:8787' : 'https://id.example.com')).replace(/\/$/, '');
 function loadToken() {
   if (flags.local && !flags['token-file']) {
-    const m = /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(ROOT, '.dev.vars'), 'utf8'));
+    const m = /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP, '.dev.vars'), 'utf8'));
     if (!m) die('.dev.vars 中没有 ADMIN_TOKEN');
     return m[1].trim();
   }

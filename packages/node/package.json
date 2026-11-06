@@ -1,0 +1,10 @@
+{
+  "name": "@pkauth/node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "P4 stub. Node adapter is not implemented in P1.",
+  "exports": {
+    ".": "./src/index.js"
+  }
+}

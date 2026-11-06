@@ -1,5 +1,7 @@
 node_modules/
 public/app.js
+apps/idp/public/app.js
+apps/idp/public/admin.js
 .wrangler/
 .dev.vars
 test-results/

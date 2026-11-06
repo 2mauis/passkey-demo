@@ -24,7 +24,7 @@ check('trailer：缺 Agent 失败', checkAgentTrailer({ message: 'feat: x\n', au
 check('trailer：非 noreply 邮箱失败', checkAgentTrailer({ message: msg, authorName: A, authorEmail: 'a@example.com' }).includes('author-email-not-noreply'));
 check('trailer：author 与 Agent 不匹配失败', checkAgentTrailer({ message: msg, authorName: 'Someone', authorEmail: E }).includes('author-does-not-match-agent'));
 check('spec：改 spec 不改测试失败', checkSpecTests(['docs/specs/a.md']) === false);
-check('spec：改 spec 同时改 tests/*.mjs 通过', checkSpecTests(['docs/specs/a.md', 'tests/a.mjs']) === true);
+check('spec：改 spec 同时改 tests/*.mjs 通过', checkSpecTests(['docs/specs/a.md', 'tests/a.mjs']) === true && checkSpecTests(['docs/specs/a.md', 'packages/workers/tests/a.mjs']) === true && checkSpecTests(['docs/specs/a.md', 'apps/idp/tests/a.mjs']) === true);
 check('spec：TEMPLATE.md 豁免；删除 spec 不触发', checkSpecTests(['docs/specs/TEMPLATE.md']) && checkSpecTests(['docs/specs/a.md'], []));
 check('privacy：跳过 node_modules / .wrangler / package-lock.json 与图片，不误跳相似文件名', shouldSkip('node_modules/a.js') && shouldSkip('x/.wrangler/s.json') && shouldSkip('package-lock.json') && shouldSkip('shots/a.PNG') && !shouldSkip('docs/node_modules-notes.md') && !shouldSkip('src/package-lock.json.md') && !shouldSkip('src/worker.js'));
 const throws = (fn) => { try { fn(); return false; } catch { return true; } };

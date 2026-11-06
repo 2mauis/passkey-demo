@@ -13,6 +13,9 @@ import {
 } from '@simplewebauthn/server/helpers';
 import { evaluateLogin, ipPrefix, uaFamily } from './risk.js';
 export { AuthState } from './state.js';
+import { makeOidc } from './oidc.js';
+import { attachStore, consumeInvite } from './store.js';
+import { issueMigrationTicket, redeemMigrationTicket, migrationRegisterPlan } from './migrate.js';
 
 // ---------- 常量 ----------
 const MAX_PASSKEYS = 5;
@@ -26,6 +29,7 @@ const MAX_BODY = 16 * 1024; // 16 KB
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,32}$/;
 const B64URL_RE = /^[A-Za-z0-9_-]+$/;
 const SESS_COOKIE = '__Host-pk_sess';
+const MIG_COOKIE = '__Host-pk_mig';
 // 每种流程使用独立的 challenge cookie，避免条件式 UI 与普通登录互相覆盖
 const CHAL_COOKIES = { reg: '__Host-pk_chal_reg', auth: '__Host-pk_chal_auth', cond: '__Host-pk_chal_cond', step: '__Host-pk_chal_step' };
 const SIGNED_COOKIE_RE = /^[A-Za-z0-9_-]{1,900}\.[A-Za-z0-9_-]{43}$/;
@@ -69,6 +73,8 @@ const RATE_LIMITED = {
   'POST /api/admin/session-preset': 'RL_ADMIN',
   'POST /api/stepup/options': 'RL_OPTIONS',
   'POST /api/stepup/verify': 'RL_VERIFY',
+  'POST /api/migrate/ticket': 'RL_VERIFY',
+  'POST /api/migrate/redeem': 'RL_VERIFY',
   // 恢复码兑换：未登录接口，按 IP 限流（另有按用户名的失败锁定）
   'POST /api/recovery/redeem': 'RL_VERIFY',
 };
@@ -1119,19 +1125,31 @@ async function registerVerify(env, request) {
   if (rec.rc === 1 && !RECOVERY_IMPLEMENTED) return RECOVERY_DISABLED();
   if (rec.rc === 1) return recoveryRegisterFinish(env, request, rec, credential, credentialDeviceType, credentialBackedUp, aaguid, clearChal, debug);
 
-  // 未登录注册：在任何 KV 写入之前再次确认邀请仍然有效（期间可能已被撤销、过期或被别人用掉）
+  // 未登录注册：在任何写入之前原子消费邀请（D1 上并发只有一次成功）。迁移票据则绑定到原 userID。
   let inv = null;
+  let migPlan = null;
   if (!rec.su) {
-    if (typeof rec.ih !== 'string' || !/^[0-9a-f]{64}$/.test(rec.ih)) return json({ error: INVITE_GENERIC_ERROR }, 403, [clearChal]);
-    inv = await env.KV.get(`inv:${rec.ih}`, 'json');
-    if (!inv || typeof inv.x !== 'number' || Date.now() > inv.x || (inv.u && inv.u !== rec.u)) {
-      return json({ error: INVITE_GENERIC_ERROR }, 403, [clearChal]);
+    const migId = getCookie(request, MIG_COOKIE);
+    const pending = migId ? await stateStub(env).peek(`mg:${migId}`) : null;
+    if (pending) {
+      migPlan = migrationRegisterPlan({ pending, user: await getUser(env, pending.username) });
+      if (migPlan.kind !== 'add-passkey') return fail(REG_GENERIC_ERROR);
+    } else {
+      if (typeof rec.ih !== 'string' || !/^[0-9a-f]{64}$/.test(rec.ih)) return json({ error: INVITE_GENERIC_ERROR }, 403, [clearChal]);
+      inv = await env.KV.get(`inv:${rec.ih}`, 'json');
+      if (!inv || typeof inv.x !== 'number' || Date.now() > inv.x || (inv.u && inv.u !== rec.u)) {
+        return json({ error: INVITE_GENERIC_ERROR }, 403, [clearChal]);
+      }
     }
   }
 
-  let user = await getUser(env, rec.u);
+  let user = migPlan ? migPlan.user : await getUser(env, rec.u);
   const credTaken = await env.KV.get(`cred:${credential.id}`);
-  if (rec.su) {
+  if (migPlan) {
+    if (!user || user.userID !== migPlan.user.userID) return fail(REG_GENERIC_ERROR);
+    if (user.credentials.length >= MAX_PASSKEYS) return fail(`每个用户最多只能绑定 ${MAX_PASSKEYS} 个 passkey，已达上限。`);
+    if (credTaken) return fail('该 passkey 已被登记');
+  } else if (rec.su) {
     // 已登录添加：必须仍是同一个用户
     if (!user || user.username !== rec.su || user.userID !== rec.uid) return fail('会话与账号不匹配，请重新登录');
     if (user.credentials.length >= MAX_PASSKEYS) return fail(`每个用户最多只能绑定 ${MAX_PASSKEYS} 个 passkey，已达上限。`);
@@ -1143,6 +1161,12 @@ async function registerVerify(env, request) {
   }
 
   const now = Date.now();
+  if (!rec.su && !migPlan) {
+    inv = await consumeInvite(env, rec.ih);
+    if (!inv || typeof inv.x !== 'number' || Date.now() > inv.x || (inv.u && inv.u !== rec.u)) {
+      return json({ error: INVITE_GENERIC_ERROR }, 403, [clearChal]);
+    }
+  }
   if (!user) user = { username: rec.u, userID: rec.uid, createdAt: now, credentials: [] };
   user.credentials.push({
     id: credential.id,
@@ -1157,10 +1181,12 @@ async function registerVerify(env, request) {
   });
   await putUser(env, user);
   await env.KV.put(`cred:${credential.id}`, user.username);
-  // 一次性：注册成功后立即删除邀请（1 次 KV delete）
-  if (!rec.su) await env.KV.delete(`inv:${rec.ih}`);
-  // 邀请带岗位模板快照：套用（角色要再次确认签发者此刻仍有权授予，否则跳过并审计）
-  if (!rec.su && inv && inv.tp) await applyInviteTemplate(env, request, user.username, inv);
+  // 邀请已在写入前原子消费。迁移登记完成后清掉一次性上下文。
+  if (migPlan) {
+    const migId = getCookie(request, MIG_COOKIE);
+    if (migId) await stateStub(env).consume(`mg:${migId}`);
+  }
+  if (!rec.su && !migPlan && inv && inv.tp) await applyInviteTemplate(env, request, user.username, inv);
 
   const cookies = [clearChal];
   if (!session) {
@@ -1286,6 +1312,28 @@ async function recordLoginEnv(env, request, username) {
   return r;
 }
 
+async function migrateTicket(env, request) {
+  const s = await getSession(env, request);
+  if (!s) throw new HttpError(401, ADMIN_AUTH_ERROR);
+  requireStepUp(s, env);
+  const user = await getUser(env, s.username);
+  if (!user) throw new HttpError(401, ADMIN_AUTH_ERROR);
+  const issued = await issueMigrationTicket(env, stateStub(env), { userID: user.userID, username: user.username, sid: s.sid });
+  if (!issued) throw new HttpError(503, '迁移票据不可用');
+  await audit(env, request, 'migrate.ticket', s.username, s.username, {});
+  return json({ ok: true, url: issued.url });
+}
+async function migrateRedeem(env, request) {
+  const body = await readJson(request);
+  const redeemed = await redeemMigrationTicket(env, stateStub(env), typeof body.ticket === 'string' ? body.ticket : '');
+  if (!redeemed) return json({ error: '迁移票据无效或已失效' }, 400);
+  const user = await getUser(env, redeemed.username);
+  if (!user || user.userID !== redeemed.userID) return json({ error: '迁移票据无效或已失效' }, 400);
+  const id = randomId(32);
+  await stateStub(env).issue(`mg:${id}`, 10 * 60 * 1000, { username: user.username, userID: user.userID });
+  return json({ ok: true, username: user.username }, 200, [cookie(MIG_COOKIE, id, 600)]);
+}
+
 async function logout(env, request) {
   await readJson(request);
   const sid = getCookie(request, SESS_COOKIE);
@@ -1316,6 +1364,8 @@ const ROUTES = {
   'POST /api/admin/session-preset': adminSessionPreset,
   'POST /api/stepup/options': stepupOptions,
   'POST /api/stepup/verify': stepupVerify,
+  'POST /api/migrate/ticket': migrateTicket,
+  'POST /api/migrate/redeem': migrateRedeem,
 };
 
 // ---------- 管理页面 ----------
@@ -1342,11 +1392,17 @@ async function adminPage(env, request, url) {
   return out;
 }
 
+const oidc = makeOidc({ json, getSession, getUser, accountExpired, getRole, getExpiry, stateStub, stepUpWindow, audit, securityHeaders: SECURITY_HEADERS });
+
 export default {
   async fetch(request, env) {
+    env = attachStore(env);
     const url = new URL(request.url);
     // 不盲信 Host：只为配置的 RP_ID 提供服务
     if (url.hostname !== env.RP_ID) return new Response('Misdirected Request', { status: 421 });
+    // OIDC 端点（/.well-known/openid-configuration、/oauth/*）：不在 /api/ 下，不做 Origin 校验，见 src/oidc.js
+    const o = await oidc(env, request, url);
+    if (o) return o;
 
     if (url.pathname.startsWith('/api/')) {
       const handler = ROUTES[`${request.method} ${url.pathname}`];

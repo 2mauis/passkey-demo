@@ -17,6 +17,14 @@
 3. 线上自检（注册、登录、step-up、预设读取）。
 4. 失败：`wrangler rollback` 到上一版本；DO 迁移本身不会被回滚，但旧版本不读 DO，因此功能上等价回退；KV 未改动。
 
+## KV → D1（P1 代码路径，不在本仓库执行）
+
+用户、凭据、邀请、角色、拒绝项、过期、模板、审计可以由 `apps/idp/src/store.js` 的 `migrateKvToD1` 从 KV 复制到 D1（表结构见 `apps/idp/schema.sql`）。未绑定 `DB` 时 IdP 仍读写 KV，现有本地测试不变。邀请在绑定 D1 后用单条 `DELETE … RETURNING` 消费。
+
+上线前由 Jack 做 KV 只读备份（命令见上文，导出文件放在仓库外并加密），再在批准后的维护窗口执行迁移。本变更不调用 wrangler、不读不写线上 KV 或 D1。
+
+旧 passkey 不能换 RP ID。过渡用 `POST /api/migrate/ticket`（已登录且 5 分钟内做过 step-up）签发绑定 `userID` 的一次性票据，5 分钟内在新站 `POST /api/migrate/redeem` 消费，之后为同一账户登记新 passkey。
+
 ## 迁移到其它平台（平台中立概述）
 
 KV → 任意键值存储；DO → 带事务的数据库（如 PostgreSQL 行锁 / Redis Lua 原子操作）；Rate Limiting 绑定 → 网关限流；Turnstile → 任意人机验证。WebAuthn 依赖 RP ID，换域名意味着全部 passkey 失效，必须重新注册。

@@ -10,6 +10,11 @@ import { randomBytes } from 'node:crypto';
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const REPO_ROOT = dirname(dirname(APP_ROOT));
 
 const BASE = (process.env.BASE_URL || 'http://localhost:8787').replace(/\/$/, '');
 const ORIGIN = new URL(BASE).origin;
@@ -21,7 +26,7 @@ let dev = null;
 const PERSIST = `/tmp/pk-admin-${Date.now()}`;
 async function startDev(extra = []) {
   mkdirSync(PERSIST, { recursive: true });
-  dev = spawn('npx', ['wrangler', 'dev', '--port', '8787', '--persist-to', PERSIST, ...extra], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  dev = spawn('npx', ['wrangler', 'dev', '--port', '8787', '--persist-to', PERSIST, ...extra], { cwd: APP_ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   dev.stdout.on('data', (d) => { out += d; });
   dev.stderr.on('data', (d) => { out += d; });
@@ -67,7 +72,7 @@ async function budget(path, n = 1) {
 const LIST = '/api/admin/invites', REVOKE = '/api/admin/invites/revoke', PAGE = '/admin', MEM = '/api/admin/members';
 
 // ---- 应急 Bearer 入口（本地 token 取自 .dev.vars，线上取自 .admin-token；不打印）----
-const TOKEN = LOCAL ? /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync('.dev.vars', 'utf8'))[1].trim() : readFileSync('.admin-token', 'utf8').trim();
+const TOKEN = LOCAL ? /^ADMIN_TOKEN=(.+)$/m.exec(readFileSync(join(APP_ROOT, '.dev.vars'), 'utf8'))[1].trim() : readFileSync(join(REPO_ROOT, '.admin-token'), 'utf8').trim();
 const BH = { 'Content-Type': 'application/json', Origin: ORIGIN, Authorization: `Bearer ${TOKEN}` };
 const created = new Set();
 async function raw(method, path, { headers = {}, body, cookie } = {}) {

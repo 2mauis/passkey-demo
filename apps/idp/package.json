@@ -1,0 +1,26 @@
+{
+  "name": "pkauth-idp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "pkauth IdP (passkey-demo + OIDC). Deploy is manual and out of scope for this change.",
+  "scripts": {
+    "build": "esbuild src/client.js --bundle --format=esm --minify --target=es2020 --outfile=public/app.js && esbuild src/admin.js --bundle --format=esm --minify --target=es2020 --outfile=public/admin.js",
+    "dev": "wrangler dev",
+    "test:e2e": "node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "@pkauth/core": "0.1.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jsqr": "^1.4.0",
+    "oauth4webapi": "^3.8.8",
+    "playwright": "^1.64.1",
+    "pngjs": "^7.0.0",
+    "qrcode": "^1.5.4",
+    "wrangler": "^4.152.0"
+  }
+}
