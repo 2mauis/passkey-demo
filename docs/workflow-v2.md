@@ -43,7 +43,7 @@
 
 ## Cloudflare 部署规则
 
-- 当前不启用 CD：`deploy.yml` 只有 workflow_dispatch，缺 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 时预检退出 0；检测到占位配置时拒绝部署。
+- 部署配置：提交的 `apps/idp/wrangler.toml` 保持 example 占位。`deploy.yml` 只有 workflow_dispatch；缺 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 时预检退出 0。`go=1` 时用 `deploy` environment 的 `DEPLOY_*` secrets 注入 runner 上的工作副本，再拒绝仍然占位的配置。Worker 名来自 `DEPLOY_WORKER_NAME`，必须是已存在的 `passkey-demo`。不在仓库里保存真实 KV id、sitekey 或域名。步骤见 docs/workflow.md。
 - token 只给 Account · Workers Scripts:Edit、单账户；KV 权限不进 CI。步骤→权限表与启用顺序（建 token → 配 secret → box 上 KV 备份 → 启用 CD → 线上自检 / 失败 rollback）见 docs/workflow.md。
 - 部署、rollback、secret 变更、DO 迁移都属于重大改动，需 Jack 当次批准。
 
@@ -66,7 +66,7 @@
 | `workflow-v2.yml` | agent-trailer、spec-requires-tests | pull_request |
 | `codeql.yml` | Analyze (javascript-typescript / actions) | 仅 public 仓执行（private 仓 job 被 `if` 跳过） |
 | `publish.yml` | publish-snapshot | 仅 workflow_dispatch（staging 用） |
-| `deploy.yml` | deploy | 仅 workflow_dispatch；缺 CLOUDFLARE_API_TOKEN 时预检退出 0 并跳过 |
+| `deploy.yml` | deploy | 仅 workflow_dispatch；缺 CLOUDFLARE_API_TOKEN 时预检退出 0 并跳过；go=1 时注入 DEPLOY_* 后再部署 |
 
 ## 风险
 

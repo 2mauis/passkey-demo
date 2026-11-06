@@ -1,6 +1,8 @@
-# 部署到 Cloudflare Workers：仅手动触发；当前未启用 CD。
-# 缺少 CLOUDFLARE_API_TOKEN 时预检输出 skip 并退出 0，后续步骤全部跳过。
-# 权限要求与启用步骤见 docs/workflow.md「部署权限」「之后的 CD 步骤」。
+# 部署到 Cloudflare Workers：仅手动触发。
+# 缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID 时预检输出 skip 并退出 0，后续步骤全部跳过。
+# go=1 时把 deploy environment 的 DEPLOY_* 注入 apps/idp/wrangler.toml 的工作副本（不提交），
+# 注入后再拒绝仍是占位的配置，然后 dry-run 与 deploy 都使用这份文件。
+# 不打印 secret 值。权限与 secrets 见 docs/workflow.md「部署权限」「之后的 CD 步骤」。
 name: deploy
 on:
   workflow_dispatch:
@@ -27,17 +29,27 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: "22", cache: npm }
       - if: steps.pre.outputs.go == '1'
+        name: 注入部署配置
+        env:
+          DEPLOY_WORKER_NAME: ${{ secrets.DEPLOY_WORKER_NAME }}
+          DEPLOY_RP_ID: ${{ secrets.DEPLOY_RP_ID }}
+          DEPLOY_ORIGIN: ${{ secrets.DEPLOY_ORIGIN }}
+          DEPLOY_RP_NAME: ${{ secrets.DEPLOY_RP_NAME }}
+          DEPLOY_PRINCIPALS: ${{ secrets.DEPLOY_PRINCIPALS }}
+          DEPLOY_KV_ID: ${{ secrets.DEPLOY_KV_ID }}
+          DEPLOY_TURNSTILE_SITEKEY: ${{ secrets.DEPLOY_TURNSTILE_SITEKEY }}
+        run: node scripts/inject-deploy-config.mjs apps/idp/wrangler.toml
+      - if: steps.pre.outputs.go == '1'
         name: 拒绝部署占位配置
-        run: |
-          if grep -q 'example.workers.dev\|00000000000000000000000000000000' apps/idp/wrangler.toml; then echo "wrangler.toml 仍是公开占位配置，拒绝部署（见 docs/workflow.md 第 4 步）" >&2; exit 1; fi
+        run: node scripts/inject-deploy-config.mjs --check apps/idp/wrangler.toml
       - if: steps.pre.outputs.go == '1'
         run: npm ci
       - if: steps.pre.outputs.go == '1'
         working-directory: apps/idp
-        run: npx wrangler deploy --dry-run --outdir /tmp/dry
+        run: npx wrangler deploy --dry-run --outdir /tmp/dry --config wrangler.toml
       - if: steps.pre.outputs.go == '1'
         working-directory: apps/idp
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler deploy
+        run: npx wrangler deploy --config wrangler.toml

@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { checkAgentTrailer } from '../scripts/agent-trailer.mjs';
 import { checkSpecTests } from '../scripts/check-spec-tests.mjs';
+import { injectDeployConfig, placeholderIssues } from '../scripts/inject-deploy-config.mjs';
 const R = []; const check = (n, ok) => { R.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}`); };
 const hit = (t) => scanText(t, 'x').map((h) => h.split(' ')[1]);
 check('privacy：普通邮箱命中', hit('mail a.b@' + 'gmail.com').includes('email'));
@@ -83,6 +84,57 @@ try {
   check('oidc-keygen：拒绝顺着符号链接写入', r4.status !== 0 && readFileSync(linkTarget, 'utf8') === 'KEEP=1\n');
 } finally {
   rmSync(dir, { recursive: true, force: true });
+}
+
+const wranglerToml = srcOf('../apps/idp/wrangler.toml');
+const committedIssues = placeholderIssues(wranglerToml);
+check('部署配置：提交的 wrangler.toml 仍是占位', committedIssues.includes('worker-name') && committedIssues.includes('rp-id') && committedIssues.includes('origin') && committedIssues.includes('kv-id') && committedIssues.includes('principals') && committedIssues.includes('turnstile-sitekey') && wranglerToml.startsWith('name = "pkauth-idp"\n'));
+const kvId = 'ab'.repeat(16);
+const sitekey = '0x4' + 'B'.repeat(22);
+const leak = 'ZZLEAK' + '9'.repeat(8);
+const goodEnv = {
+  DEPLOY_WORKER_NAME: 'passkey-demo',
+  DEPLOY_RP_ID: 'id.example.test',
+  DEPLOY_ORIGIN: 'https://id.example.test',
+  DEPLOY_RP_NAME: 'Passkey Demo',
+  DEPLOY_PRINCIPALS: 'alice_demo,bob_demo',
+  DEPLOY_KV_ID: kvId,
+  DEPLOY_TURNSTILE_SITEKEY: sitekey,
+};
+const injected = injectDeployConfig(wranglerToml, goodEnv);
+const tail = (s) => s.slice(s.indexOf('[[durable_objects.bindings]]'));
+const frozenOk = injected.ok && tail(injected.toml) === tail(wranglerToml);
+const changed = injected.ok ? wranglerToml.split('\n').filter((line, i) => line !== injected.toml.split('\n')[i]) : [];
+check('部署配置：只替换七个占位行，限流与 DO 段不变', frozenOk && changed.length === 7 && injected.toml.includes('name = "passkey-demo"') && injected.toml.includes('RP_ID = "id.example.test"') && injected.toml.includes('ORIGIN = "https://id.example.test"') && injected.toml.includes('RP_NAME = "Passkey Demo"') && injected.toml.includes('PRINCIPALS = "alice_demo,bob_demo"') && injected.toml.includes(`id = "${kvId}"`) && injected.toml.includes(`TURNSTILE_SITEKEY = "${sitekey}"`) && injected.toml.includes('# database_id = "00000000000000000000000000000000"') && injected.toml.includes('namespace_id = "26102601"') && injected.toml.includes('namespace_id = "26102602"') && injected.toml.includes('namespace_id = "26102603"') && injected.toml.includes('class_name = "AuthState"') && injected.toml.includes('tag = "v1-authstate"') && injected.toml.includes('new_sqlite_classes = ["AuthState"]') && placeholderIssues(injected.toml).length === 0);
+check('部署配置：与占位文本相同的合法 RP_NAME 仍可注入', injectDeployConfig(wranglerToml, { ...goodEnv, DEPLOY_RP_NAME: 'pkauth' }).ok);
+const bad = (patch) => injectDeployConfig(wranglerToml, { ...goodEnv, ...patch });
+const badOut = (patch) => { const r = bad(patch); return r.ok ? '' : r.errors.join(','); };
+check('部署配置：空 secret、占位值与非法字符都失败且不回显值', !bad({ DEPLOY_WORKER_NAME: '' }).ok && badOut({ DEPLOY_WORKER_NAME: '   ' }).includes('missing:DEPLOY_WORKER_NAME') && badOut({ DEPLOY_WORKER_NAME: 'pkauth-idp' }).includes('invalid:DEPLOY_WORKER_NAME') && badOut({ DEPLOY_WORKER_NAME: 'other-worker' }).includes('invalid:DEPLOY_WORKER_NAME') && badOut({ DEPLOY_RP_ID: 'id.example.com' }).includes('invalid:DEPLOY_RP_ID') && badOut({ DEPLOY_ORIGIN: 'https://id.example.com' }).includes('invalid:DEPLOY_ORIGIN') && badOut({ DEPLOY_KV_ID: '0'.repeat(32) }).includes('invalid:DEPLOY_KV_ID') && badOut({ DEPLOY_PRINCIPALS: 'root_example' }).includes('invalid:DEPLOY_PRINCIPALS') && badOut({ DEPLOY_TURNSTILE_SITEKEY: '1x00000000000000000000AA' }).includes('invalid:DEPLOY_TURNSTILE_SITEKEY') && badOut({ DEPLOY_WORKER_NAME: `passkey-${leak}` }).includes('invalid:DEPLOY_WORKER_NAME') && !badOut({ DEPLOY_WORKER_NAME: `passkey-${leak}` }).includes(leak) && !bad({ DEPLOY_ORIGIN: 'https://id.example.test\nname = "other"' }).ok);
+const deployYml = srcOf('../.github/workflows/deploy.yml');
+const injectAt = deployYml.indexOf('node scripts/inject-deploy-config.mjs apps/idp/wrangler.toml');
+const checkAt = deployYml.indexOf('node scripts/inject-deploy-config.mjs --check apps/idp/wrangler.toml');
+const dryAt = deployYml.indexOf('npx wrangler deploy --dry-run --outdir /tmp/dry --config wrangler.toml');
+const realAt = deployYml.indexOf('npx wrangler deploy --config wrangler.toml');
+const secretNames = ['DEPLOY_WORKER_NAME', 'DEPLOY_RP_ID', 'DEPLOY_ORIGIN', 'DEPLOY_RP_NAME', 'DEPLOY_PRINCIPALS', 'DEPLOY_KV_ID', 'DEPLOY_TURNSTILE_SITEKEY', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'];
+check('部署配置：workflow 在注入之后检查占位，dry-run 与 deploy 使用注入文件', injectAt > 0 && checkAt > injectAt && dryAt > checkAt && realAt > dryAt && secretNames.every((n) => deployYml.includes(`secrets.${n}`)) && !deployYml.includes('grep -q') && !deployYml.includes('echo "$DEPLOY') && !deployYml.includes('echo ${{ secrets') && deployYml.includes("echo \"go=0\" >> \"$GITHUB_OUTPUT\""));
+const cfgDir = mkdtempSync(join(tmpdir(), 'pk-deploy-'));
+try {
+  const cfg = join(cfgDir, 'wrangler.toml');
+  writeFileSync(cfg, wranglerToml);
+  const cli = fileURLToPath(new URL('../scripts/inject-deploy-config.mjs', import.meta.url));
+  const runCli = (args, env) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+  const skipped = runCli([cfg], { DEPLOY_WORKER_NAME: '' });
+  check('部署配置：CLI 缺 secret 时不改文件、不打印值', skipped.status !== 0 && readFileSync(cfg, 'utf8') === wranglerToml && !skipped.stdout.includes(kvId) && !skipped.stderr.includes(kvId) && !skipped.stdout.includes(sitekey) && !skipped.stderr.includes(sitekey));
+  const wrote = runCli([cfg], goodEnv);
+  const after = readFileSync(cfg, 'utf8');
+  const checked = runCli(['--check', cfg], {});
+  check('部署配置：CLI 注入后占位检查通过，且输出不含 KV id 与 sitekey', wrote.status === 0 && checked.status === 0 && after === injected.toml && !wrote.stdout.includes(kvId) && !wrote.stderr.includes(kvId) && !wrote.stdout.includes(sitekey) && !wrote.stderr.includes(sitekey) && !checked.stdout.includes(kvId) && !checked.stderr.includes(sitekey));
+  const linkCfg = join(cfgDir, 'link.toml');
+  symlinkSync(cfg, linkCfg);
+  const linked = runCli([linkCfg], goodEnv);
+  check('部署配置：拒绝顺着符号链接写入', linked.status !== 0 && readFileSync(cfg, 'utf8') === after);
+} finally {
+  rmSync(cfgDir, { recursive: true, force: true });
 }
 
 const f = R.filter((x) => !x).length; console.log(`结果：${R.length - f}/${R.length} 通过`); process.exit(f ? 1 : 0);

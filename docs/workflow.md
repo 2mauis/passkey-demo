@@ -35,12 +35,22 @@
 
 `CLOUDFLARE_ACCOUNT_ID` 必须显式设置，避免 wrangler 调 `/memberships`（该调用需要额外权限，见 workers-sdk issue #10466）。workflow 不运行 `wrangler whoami`。
 
-## 之后的 CD 步骤（今天全部不做，由 Jack 执行或批准）
+## 之后的 CD 步骤（配置在部署时注入；触发仍由 Jack 批准）
+
+公开仓与 staging 提交的 `apps/idp/wrangler.toml` 保持 example 占位（`name = "pkauth-idp"`、`RP_ID` / `ORIGIN` 为 example.com、`PRINCIPALS = "root_example"`、KV id 全 0、Turnstile 测试 sitekey `1x00000000000000000000AA`）。真实值只放在 staging 的 `deploy` environment secrets 里，由 `deploy.yml` 在 runner 上注入工作副本，不提交。
 
 1. Jack 在 Cloudflare 创建 API token：只含 **Account · Workers Scripts:Edit**，账户范围限定为单个账户；不加 Zone、KV、User 权限；设到期时间。
-2. 在 public 仓（或 staging）的 `deploy` environment 中添加 secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`；environment 设 required reviewer = Jack。
+2. 在 staging 的 `deploy` environment 中添加 secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，以及第 4 步的 `DEPLOY_*`；environment 设 required reviewer = Jack。不要把这些值写入仓库。
 3. 在 box 上用现有 wrangler 登录做线上 KV 备份（`wrangler kv key list` + 逐键导出到 box 本地加密目录），不进 CI。
-4. 启用 CD：先决定线上配置来源——公开仓的 wrangler.toml 是占位值（example 子域、全 0 KV id），`deploy.yml` 检测到占位值会拒绝部署；需要 Jack 选择在 deploy environment 中生成私有配置或在 staging 保留真实配置（属于重大改动）。然后手动触发 `deploy.yml`（workflow_dispatch）；它先 `wrangler deploy --dry-run`，再 `wrangler deploy`。
-5. 线上自检（`tests/online-checks.mjs` 的只读部分 + 手动注册 / 登录 / step-up）；失败立即 `wrangler rollback` 到上一版本并报告。
+4. 手动触发 `deploy.yml`（workflow_dispatch）。`go=1` 时 workflow 只替换工作副本里的已知占位行：
+   - `DEPLOY_WORKER_NAME` → 顶层 `name`。注入只接受已存在的生产 Worker `passkey-demo`（`pkauth-idp` 或其它名字都会失败），因此不会新建 Worker，也不会改写同账户里的另一个脚本。
+   - `DEPLOY_RP_ID` → `[vars].RP_ID`
+   - `DEPLOY_ORIGIN` → `[vars].ORIGIN`
+   - `DEPLOY_RP_NAME` → `[vars].RP_NAME`
+   - `DEPLOY_PRINCIPALS` → `[vars].PRINCIPALS`（逗号分隔，用户名规则与页面一致；占位值 `root_example` 会被拒绝）
+   - `DEPLOY_KV_ID` → `[[kv_namespaces]]` 里绑定 `KV` 的 `id`（使用已有 namespace，不新建）
+   - `DEPLOY_TURNSTILE_SITEKEY` → `[vars].TURNSTILE_SITEKEY`
+   任一 `DEPLOY_*` 为空则失败退出。注入后再次检查：若 `name` 仍是 `pkauth-idp`，或 `RP_ID` / `ORIGIN` 仍含 `example.com`，或 KV `id` 仍是全 0，或 `PRINCIPALS` 仍是 `root_example`，或 Turnstile 仍是测试密钥 `1x00000000000000000000AA`，则拒绝部署。限流 `namespace_id` `26102601`–`26102603` 与 Durable Object 绑定 `STATE` / `AuthState`、迁移 tag `v1-authstate` 必须与生产一致；注入不改这些段，也不新增 DO class 或迁移 tag。通过后对注入后的 `apps/idp/wrangler.toml` 先 `wrangler deploy --dry-run`，再 `wrangler deploy`。workflow 不打印 secret 值。
+5. 线上自检（`apps/idp/tests/online-checks.mjs` 的只读部分 + 手动注册 / 登录 / step-up）；失败立即 `wrangler rollback` 到上一版本并报告。
 
-`deploy.yml` 在缺少 `CLOUDFLARE_API_TOKEN` 时预检步骤输出 skip 并以 0 退出，后续步骤全部跳过。
+`deploy.yml` 在缺少 `CLOUDFLARE_API_TOKEN` 或 `CLOUDFLARE_ACCOUNT_ID` 时预检步骤输出 skip 并以 0 退出，后续步骤全部跳过。
