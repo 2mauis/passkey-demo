@@ -4,9 +4,11 @@
 
 # Passkey（WebAuthn）登录演示
 
-线上地址：<https://passkey-demo.example.workers.dev>（仅为演示，请勿输入真实个人信息）
+线上技术演示：<https://passkey-demo.iotempjp.workers.dev>（注册仅限受邀，不提供公开自助注册；请勿输入真实个人信息。演示数据可能被清除。）<!-- privacy-scan: allow -->
 
-**注册仅限受邀**：有角色的用户登录后在网页 **[`/admin`](https://passkey-demo.example.workers.dev/admin)** 签发一次性、有过期时间的邀请码 / 邀请链接（可绑定用户名），没有有效邀请无法注册。命令行 `scripts/invite.mjs` 保留为应急入口。调研与选型见 [`docs/registration-restriction.md`](docs/registration-restriction.md)。
+文中其余的 `passkey-demo.example.workers.dev` 都是占位符，自行部署后换成自己的 Worker 主机名。
+
+**注册仅限受邀**：有角色的用户在演示站点登录后，在网页 [`/admin`](https://passkey-demo.iotempjp.workers.dev/admin) 签发一次性、有过期时间的邀请码 / 邀请链接（可绑定用户名），没有有效邀请无法注册。自行部署时，`/admin` 在自己的主机名上。命令行 `scripts/invite.mjs` 保留为应急入口。调研与选型见 [`docs/registration-restriction.md`](docs/registration-restriction.md)。<!-- privacy-scan: allow -->
 
 ## 架构
 
@@ -158,7 +160,8 @@
 npm install
 npx wrangler kv namespace create passkey-demo-kv   # 首次；把 id 写入 wrangler.toml
 # Turnstile 小组件（免费 managed，仅允许本 workers.dev 主机名）；sitekey 写入 wrangler.toml 的 vars，
-# secret 通过管道直接交给 wrangler secret put，不打印、不落盘：
+# secret 通过管道直接交给 wrangler secret put，不打印、不落盘。
+# 命令里的 passkey-demo.example.workers.dev 是占位符，创建时换成自己的主机名：
 npx wrangler turnstile widget create passkey-demo --domain passkey-demo.example.workers.dev --mode managed --json \
   | node scripts/turnstile-setup.mjs
 openssl rand -base64 32 | npx wrangler secret put CHAL_HMAC_KEY
@@ -172,7 +175,7 @@ npx wrangler deploy                                  # 会先执行 npm run buil
 
 ### 网页（日常）
 
-1. 用有角色的账号（负责人 / 成员主管 / 邀请人）在首页用 passkey 登录，首页会显示“你的角色：… · 邀请管理”入口；或直接打开 <https://passkey-demo.example.workers.dev/admin>。
+1. 用有角色的账号（负责人 / 成员主管 / 邀请人）在演示首页用 passkey 登录，首页会显示“你的角色：… · 邀请管理”入口；或直接打开 <https://passkey-demo.iotempjp.workers.dev/admin>。自行部署时改为自己的主机名，不要用文中的 `example.workers.dev` 占位符。<!-- privacy-scan: allow -->
 2. “生成邀请”：选有效期（1 小时 / 1 天 / 3 天 / 7 天 / 30 天），可填绑定用户名，点“生成邀请”。邀请码和链接**只显示这一次**，旁边有“复制”按钮；点“我已复制，隐藏”或离开页面后就不再显示（服务器只存哈希，丢了只能撤销重发）。
 3. “待使用的邀请”列表：编号、绑定用户名、状态、创建时间、过期时间、签发者；点“撤销”立即作废（邀请人只能撤销自己签发的）。已使用 / 已撤销的邀请直接从存储里删除，过期的由 KV 自动删除，所以列表里只有“待使用”的。
 4. “成员角色”（负责人、成员主管可见）：输入已注册的用户名，选角色，点“授予角色”；点“移除角色”收回。负责人那一行没有按钮（来自 Worker 配置）。
@@ -190,7 +193,7 @@ node scripts/invite.mjs revoke <id>                    # 撤销（id 来自 crea
 # 选项：--json 输出 JSON；--base <URL>；--token-file <路径>；--local 指向本地 wrangler dev（token 取 .dev.vars 的 ADMIN_TOKEN）
 ```
 
-`create` 会输出一次邀请码和邀请链接 `https://passkey-demo.example.workers.dev/#invite=<邀请码>[&u=<用户名>]`（服务器只存哈希，丢了只能撤销重发）。邀请码放在 `#` 片段里，不会出现在服务器 / CDN 日志中；页面读取后立即用 `history.replaceState` 从地址栏去掉。受邀人打开链接 → 邀请码（和绑定的用户名）自动填好 → 完成 Turnstile → 创建 passkey。
+`create` 会输出一次邀请码和邀请链接，形如 `https://passkey-demo.example.workers.dev/#invite=<邀请码>[&u=<用户名>]`。这里的主机名是占位符，实际链接用该次部署的 ORIGIN（服务器只存哈希，丢了只能撤销重发）。邀请码放在 `#` 片段里，不会出现在服务器 / CDN 日志中；页面读取后立即用 `history.replaceState` 从地址栏去掉。受邀人打开链接 → 邀请码（和绑定的用户名）自动填好 → 完成 Turnstile → 创建 passkey。
 
 不需要应急入口时：`npx wrangler secret delete ADMIN_TOKEN`（之后 Bearer 一律 401）。
 
@@ -220,7 +223,7 @@ BASE_URL=http://localhost:8787 node tests/e2e.mjs            # 本地全流程�
 BASE_URL=http://localhost:8787 node tests/conditional.mjs    # 本地条件式 UI
 node tests/online-checks.mjs                                 # 线上：所有拒绝路径 + 浏览器登录路径 + 过期 + 429
 node tests/admin-ui.mjs                                      # 本地：/admin 三种角色完整流程（脚本自己启动 wrangler dev，端口 8787 须空闲）
-BASE_URL=https://passkey-demo.example.workers.dev node tests/admin-ui.mjs   # 线上：/admin 拒绝路径 + 邀请链接自动填充 + Bearer
+BASE_URL=https://passkey-demo.example.workers.dev node tests/admin-ui.mjs   # 占位主机名；换成自己的 ORIGIN 后，检查 /admin 拒绝路径 + 邀请链接自动填充 + Bearer
 ```
 
 测试通过管理接口自动创建测试邀请（本地用 `.dev.vars` 的 `ADMIN_TOKEN`，线上用 `.admin-token`），不打印 token 和邀请码，结束前撤销所有未用掉的测试邀请并确认列表里一个都不剩。
@@ -249,7 +252,7 @@ BASE_URL=https://passkey-demo.example.workers.dev node tests/admin-ui.mjs   # �
 - **ADMIN_TOKEN** 是长期静态 Bearer token：泄露即可创建邀请（不能改角色）。只存放在 `.admin-token`（600）与 Worker secret；疑似泄露时按上文轮换。管理接口没有 IP 白名单 / 二次验证。管理接口的 `RL_ADMIN` 限流同样按节点近似计数：线上实测复用连接时第 11 次即 429，但每次新建连接时 30 次都未触发，所以它只是减速带，真正的防线是 384 bit 随机 token + 常量时间比较。
 - 没有账号恢复、删除 passkey / 账号的功能。
 - 未做 attestation 校验（`attestation: 'none'`）。
-- 仅为演示，数据可能随时被清除。
+- 线上地址是技术演示，注册仅限受邀；演示数据可能被清除。自行部署时把 `passkey-demo.example.workers.dev` 换成自己的主机名。
 
 ## 文档
 
